@@ -1,27 +1,32 @@
 import Link from 'next/link';
 import { sources, RESEARCH_UPDATED } from '../../data/models';
+import { BENCHMARK_SNAPSHOT } from '../../data/verified-benchmarks';
 
 export default function Methodology() {
   return <main className="methodPage shell">
     <Link href="/" className="back">← Rankings</Link>
     <span className="kicker">METHODOLOGY · {RESEARCH_UPDATED}</span>
-    <h1>Rank evidence, not vibes.</h1>
-    <p className="lead">The leaderboard keeps five different questions separate: how capable a model appears, how recent it is, where it is actually available, what each provider charges, and how strong the underlying evidence is.</p>
+    <h1>Show the source before the score.</h1>
+    <p className="lead">The default leaderboard is Arena Overall because it is a source-native ranking. The site also shows Artificial Analysis, LLM Stats and Kilo independently. Consensus is a derived secondary view, not a claim that one synthetic number is ground truth.</p>
 
-    <section><h2>1. Provider availability is explicit</h2><p>Venice and Morpheus are inference providers, not model creators. Every model has provider-specific IDs and provider-specific prices. A row marked <code>VENICE</code>, <code>MORPHEUS</code>, or both means the model appears in the checked provider catalog. When server-side provider API keys are configured, current catalogs overlay the researched snapshot hourly; otherwise the interface clearly labels the provider layer as a documented snapshot.</p></section>
+    <section><h2>1. Default ranking: Arena Overall</h2><p>Rows default to the model's Arena Overall position when that model/configuration is present on the Arena text leaderboard. The UI shows the source rank, score, vote count and configuration label where available. A model that ranks first on a coding benchmark does not automatically rank first overall.</p></section>
 
-    <section><h2>2. Capability signals are normalized within their own benchmark family</h2><p>Raw scores from Arena, LLM Stats, Artificial Analysis and Kilo are not directly comparable. The ranking engine converts each available metric to its percentile among tracked models for that same metric, then combines those percentiles. Capability weights are Arena 40%, LLM Stats 25%, Artificial Analysis 20%, and Kilo 15%. Missing signals are excluded and the remaining weights are renormalized; missing data is never scored as zero.</p></section>
+    <section><h2>2. Independent benchmark columns stay independent</h2><p>Arena, Artificial Analysis, LLM Stats and Kilo measure different things and use different scales. Their raw values are therefore displayed separately. Kilo is treated as a coding signal and is excluded from the general Consensus score.</p></section>
 
-    <section><h2>3. Recency is intentionally overweighted</h2><p>The main Power score is <strong>70% benchmark capability + 25% freshness + 5% evidence coverage</strong>. Freshness decays continuously from the release date. This is an explicit product choice: the site is meant to surface the current generation rather than let older, heavily benchmarked models dominate forever. A model still needs benchmark evidence to receive a Power rank; recency alone cannot create a ranked model.</p></section>
+    <section><h2>3. Consensus is secondary and evidence-constrained</h2><p>Consensus requires at least two of three general benchmark families: Arena, Artificial Analysis and LLM Stats. Within the benchmark component, weights are Arena 50%, Artificial Analysis 30%, and LLM Stats 20%, normalized within each source family. The resulting score is <strong>90% benchmark consensus + 10% release recency</strong>. Models with only two general sources receive a small evidence penalty. Recency can break close ties; it cannot manufacture a frontier rank.</p></section>
 
-    <section><h2>4. Task scores stay separate</h2><p>Reasoning, coding and agent scores combine only related normalized observations. Reasoning uses sources such as LLM Stats reasoning, GPQA and Artificial Analysis when available. Coding uses coding-specific LLM Stats, Kilo completion, Terminal-Bench and SWE-bench observations. Agent score uses agent-specific LLM Stats and long-horizon or automation observations. Vendor-published benchmarks are displayed with provenance and are not silently treated as independent evidence.</p></section>
+    <section><h2>4. Configuration labels matter</h2><p>Benchmark publishers may report <code>max</code>, <code>high</code>, <code>xhigh</code>, adaptive-reasoning or other configurations. The site preserves those labels instead of pretending every benchmark number refers to an identical inference configuration. Cross-source comparisons should be read with that limitation visible.</p></section>
 
-    <section><h2>5. Price and value</h2><p>Provider prices remain separate in the table and comparison view because the same model can cost different amounts on Venice and Morpheus. The Value index combines Power with an affordability percentile based on a blended input/output workload estimate. It is a navigation aid, not a universal cost model.</p></section>
+    <section><h2>5. Provider availability is not model capability</h2><p>Venice and Morpheus are inference providers. They have separate columns, provider IDs and prices. A Venice listing never implies Morpheus availability. When server-side API keys are configured, current provider catalogs overlay the checked research snapshot hourly; otherwise the UI labels them as documented catalog entries.</p></section>
 
-    <section><h2>6. Technical metadata</h2><p>Context, total and active parameter counts, license, privacy mode, quantization/precision, capabilities, Hugging Face links, official release dates and provider IDs are treated as provenance-bearing metadata. Venice's live model endpoint can expose context, quantization, function calling, reasoning, vision, web search, privacy and model-source information. Open-weight checkpoint precision is kept conceptually distinct from serving quantization.</p></section>
+    <section><h2>6. Task views</h2><p>Coding combines coding-specific evidence, led by Kilo and LLM Stats coding, with Terminal-Bench and SWE-bench observations when defensibly sourced. Reasoning and agent views likewise use task-relevant metrics. Vendor-published evaluations may be shown for context but are not silently substituted for independent benchmark evidence.</p></section>
 
-    <section><h2>Research sources</h2><ul>{Object.entries(sources).map(([key, source]) => <li key={key}><a href={source.url} target="_blank" rel="noreferrer">{source.label} ↗</a> — {source.kind}{source.primary ? ', primary source for this field' : ''}</li>)}</ul></section>
+    <section><h2>7. Model metadata</h2><p>Release date, context, total and active parameters, license, quantization/precision, capabilities, model IDs and Hugging Face links prefer first-party model or provider documentation. Unknown fields stay unknown. Provider serving quantization and downloadable checkpoint precision are distinct facts.</p></section>
 
-    <section><h2>Update contract</h2><p>Provider discovery is machine-updatable. Research metadata is checked into the repository so changes remain reviewable. Unknown release dates, parameter counts or benchmark values stay unknown until there is a defensible source. The interface should prefer an explicit blank over a plausible invention.</p></section>
+    <section><h2>Benchmark snapshot</h2><ul>{Object.entries(BENCHMARK_SNAPSHOT).filter(([key]) => key !== 'retrieved').map(([key, source]) => <li key={key}><a href={source.url} target="_blank" rel="noreferrer">{key === 'artificialAnalysis' ? 'Artificial Analysis' : key === 'llmStats' ? 'LLM Stats' : key[0].toUpperCase() + key.slice(1)} ↗</a> — source snapshot {source.sourceDate}. {source.note}</li>)}</ul></section>
+
+    <section><h2>Primary research sources</h2><ul>{Object.entries(sources).map(([key, source]) => <li key={key}><a href={source.url} target="_blank" rel="noreferrer">{source.label} ↗</a> — {source.kind}{source.primary ? ', direct source for the represented field' : ''}</li>)}</ul></section>
+
+    <section><h2>Update contract</h2><p>Provider discovery is machine-updatable. Benchmark observations and model metadata are checked into the repository with provenance so changes can be reviewed. When sources disagree, the site should expose the disagreement rather than erase it through an opaque aggregate.</p></section>
   </main>;
 }
