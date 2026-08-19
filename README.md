@@ -2,11 +2,11 @@
 
 A compact ranking tool for **text models available through Venice and Morpheus**.
 
-The product is intentionally narrow: one page that helps users understand, rank, and compare the text-model catalogs exposed by those two providers without hunting across provider dashboards and unrelated benchmark sites.
+LLM Index brings model capability, reasoning, coding, agent performance, value, price and context into one page so users do not have to compare several provider dashboards and benchmark sites manually.
 
 ## Ranking views
 
-The same tracked model set can be ranked by:
+Models can be ranked by:
 
 - Overall
 - Reasoning
@@ -16,25 +16,25 @@ The same tracked model set can be ranked by:
 - Price
 - Context
 
-## Ranking method
+## How the ranking works
 
-The site owns one transparent normalized ranking instead of mixing unrelated external leaderboard rank numbers.
+Different benchmark sites use different score scales and model populations. LLM Index converts each result to a percentile among the models tracked here before combining them.
 
-For the Overall index, available measurements are percentile-normalized within the tracked Venice + Morpheus model set and combined as:
+The Overall ranking uses:
 
 - **45% Arena**
 - **30% Artificial Analysis**
 - **25% LLM Stats**
 
-Missing measurements use a neutral prior rather than being treated as zero. Evidence coverage remains visible so a sparse model is distinguishable from a well-measured one.
+When a benchmark result is unavailable, that part of the score uses a neutral midpoint instead of treating the model as if it failed the benchmark. Evidence coverage shows how much published data is currently available for each metric.
 
-External leaderboard ranks and scores remain source-native evidence. They are displayed with direct links and are not treated as if Arena #10, LLM Stats #10, and another source's #10 describe the same population or scale.
+Arena, Artificial Analysis, LLM Stats and other external results are also shown directly so users can compare the LLM Index ranking with the underlying published measurements.
 
-Task-specific views use their relevant available signals, including LLM Stats sub-scores, Kilo, and sourced task benchmarks. Price and context views use provider/model metadata.
+Reasoning, Coding and Agents use their relevant benchmark results. Value combines capability with token affordability. Price and Context use provider/model information.
 
-## Evidence and provenance
+## Sources and uncertainty
 
-The interface links directly to tracked sources including:
+The interface links directly to sources including:
 
 - Arena
 - Artificial Analysis
@@ -42,21 +42,24 @@ The interface links directly to tracked sources including:
 - Kilo
 - Venice models and pricing
 - Morpheus models and pricing
-- official model announcements and Hugging Face/model cards when available
+- official model documentation
+- model cards and Hugging Face pages when available
 
-Exact-model measurements remain missing when they have not been sourced. Family-level proxy values are not substituted simply to fill cells.
+If a result is not available, it is shown as pending. When enough data exists to make a useful estimate, the interface may also show an estimated rank range. A wider range indicates more uncertainty.
 
-## Data architecture
+Third-party, developer-reported and estimated results are identified separately so users can see what kind of evidence supports each claim.
 
-`provider catalogs → canonical model aliases → reviewed research metadata → source-specific normalization → metric rankings`
+## Data flow
 
-Provider availability can be overlaid from live Venice and Morpheus APIs when credentials are configured. The checked-in research snapshot remains reviewable and source-linked.
+`provider catalogs → model matching → benchmark and model information → normalized metrics → rankings`
 
-## Run
+Provider availability can be refreshed from Venice and Morpheus APIs when credentials are configured. The repository also includes the benchmark and model information used by the public index.
+
+## Run locally
 
 ```bash
 npm install
 npm run dev
 ```
 
-Copy `.env.example` to `.env.local` and add provider API keys to enable live provider-catalog overlays.
+Copy `.env.example` to `.env.local` and add provider API keys to enable live provider-catalog updates.
