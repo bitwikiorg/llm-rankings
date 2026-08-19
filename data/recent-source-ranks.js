@@ -1,5 +1,4 @@
-// Source-native evidence for recent models that may not yet have the same benchmark coverage
-// as older models. These values remain labeled evidence; the site rank is normalized separately.
+// Evidence for recent models that may not yet have the same benchmark coverage as older models.
 export const RECENT_SOURCE_RANKS = {
   'glm-5-3': {
     artificialAnalysis: {
@@ -16,8 +15,8 @@ export const RECENT_SOURCE_RANKS = {
       agent: 41.8,
       snapshotDate: '2026-08-18',
     },
-    // Context-only evidence. These fields are intentionally NOT mapped into unlike benchmark
-    // families in the ranking formula. They support interpretation while preserving scale integrity.
+    // Additional benchmark context. These values are shown with their provenance and are not
+    // combined with unrelated benchmark scales in the ranking formula.
     vendor: {
       cyberGym: 84.5,
       exploitBench: 54.4,
@@ -39,10 +38,10 @@ export const RECENT_SOURCE_RANKS = {
       license: 'Pending',
       evidenceUpdated: '2026-08-19',
       evidenceState: 'independent-partial',
-      evidenceSummary: 'Artificial Analysis 60 (#8/182) and LLM Stats #6 are independent ranking evidence. Arena is still unavailable. KingBench 3 is independent coding context; Z.ai launch benchmarks are reported context and are not silently mixed onto incompatible scales.',
+      evidenceSummary: 'GLM-5.3 is #8 on Artificial Analysis with an Intelligence Index score of 60 and #6 on LLM Stats. Arena has not published a result yet. MindStudio scored it at 91.25% on KingBench 3; several additional launch benchmarks come from Z.ai and are marked as vendor-reported.',
       estimate: {
         label: 'frontier-tier estimate',
-        basis: 'Independent AA + LLM Stats, supported by independent KingBench and vendor-reported coding/agent results; Arena pending.',
+        basis: 'Artificial Analysis and LLM Stats place it near the leading group, with strong KingBench 3 results and additional Z.ai coding and agent benchmarks. Arena is still pending.',
       },
       researchSources: [
         { label: 'Z.ai — GLM-5.3 developer documentation', kind: 'official', url: 'https://docs.z.ai/guides/llm/glm-5.3' },
