@@ -3,7 +3,8 @@ export const BENCHMARK_SNAPSHOT = {
   arena: {
     url: 'https://arena.ai/leaderboard/text',
     sourceDate: '2026-08-12',
-    note: 'Arena Overall text leaderboard. Rank and score are source-native; some model families expose effort-specific variants.',
+    rechecked: '2026-08-18',
+    note: 'Arena Overall text leaderboard. Rank, score, vote count and rank spread are source-native. Exact lower-ranked rows were rechecked against the live Arena page on 2026-08-18.',
   },
   artificialAnalysis: {
     url: 'https://artificialanalysis.ai/leaderboards/models',
@@ -12,19 +13,19 @@ export const BENCHMARK_SNAPSHOT = {
   },
   llmStats: {
     url: 'https://llm-stats.com/leaderboards/llm-leaderboard',
-    sourceDate: '2026-07-26',
+    sourceDate: '2026-08-18',
     note: 'LLM Stats composite and task indices. Used as an independent aggregate signal, not as vendor truth.',
   },
   kilo: {
     url: 'https://kilo.ai/leaderboard',
     sourceDate: '2026-08-18',
-    note: 'Kilo coding benchmark. Used for coding, not the general consensus rank.',
+    note: 'Kilo coding benchmark. Used for coding, not the general aggregate rank.',
   },
 };
 
-// Explicit corrections/refreshes from the source pages above. These override older
-// checked-in benchmark observations only; provider availability and model facts remain
-// sourced from Venice/Morpheus and first-party model documentation.
+// Checked observations override older seed data. Provider availability and provider
+// pricing remain sourced separately from Venice/Morpheus. `meta` contains researched
+// model facts or explicit evaluation-state notes and is never treated as a benchmark.
 export const VERIFIED_BENCHMARKS = {
   'claude-fable-5': {
     arena: { score: 1506, rank: 1, votes: 21533, spread: '1–4', variant: 'claude-fable-5' },
@@ -83,5 +84,58 @@ export const VERIFIED_BENCHMARKS = {
     arena: { score: 1458, rank: 51, votes: 54397, variant: 'deepseek-v4-pro' },
     artificialAnalysis: { intelligence: 44, variant: 'max' },
     kilo: { completion: 44.0, costPerAttempt: 15.91 },
+  },
+
+  // Rows previously shown as "U" but present in Arena Overall.
+  'minimax-m2-7': {
+    arena: { score: 1416, rank: 118, votes: 58418, spread: '102–132', variant: 'minimax-m2.7' },
+  },
+  'qwen3-coder-480b': {
+    arena: { score: 1388, rank: 158, votes: 25814, spread: '144–169', variant: 'qwen3-coder-480b-a35b-instruct' },
+  },
+  'gpt-oss-120b': {
+    arena: { score: 1352, rank: 193, votes: 30775, spread: '184–212', variant: 'gpt-oss-120b' },
+  },
+  'nvidia-nemotron-3-5-lightning': {
+    arena: { score: 1348, rank: 198, votes: 3282, spread: '181–223', variant: 'nvidia-nemotron-3.5-lightning-30b-a3b-nvfp4', preliminary: true },
+  },
+  'mercury-2': {
+    arena: { score: 1346, rank: 203, votes: 3127, spread: '183–225', variant: 'mercury-2' },
+  },
+
+  // Exact human Arena ranks are not yet available for these configurations. Keep their
+  // independent evidence visible and use the transparent fallback aggregate instead.
+  'deepseek-v4-pro-0813': {
+    meta: {
+      evaluationState: 'Arena AutoEval · human rank pending',
+      researchSources: [
+        { label: 'Arena Text leaderboard', kind: 'benchmark', url: 'https://arena.ai/leaderboard/text' },
+        { label: 'LLM Stats leaderboard', kind: 'benchmark', url: 'https://llm-stats.com/leaderboards/llm-leaderboard' },
+      ],
+    },
+  },
+  'glm-5-3': {
+    meta: {
+      evaluationState: 'Aggregate fallback · Arena rank pending',
+      researchSources: [
+        { label: 'Arena Text leaderboard', kind: 'benchmark', url: 'https://arena.ai/leaderboard/text' },
+        { label: 'LLM Stats leaderboard', kind: 'benchmark', url: 'https://llm-stats.com/leaderboards/llm-leaderboard' },
+      ],
+    },
+  },
+  'mistral-small-4': {
+    meta: {
+      releaseDate: '2026-03-16',
+      paramsTotalB: 119,
+      paramsActiveB: 6.5,
+      context: 256000,
+      openness: 'Open weights',
+      license: 'Apache 2.0',
+      evaluationState: 'Independent benchmark coverage pending',
+      researchSources: [
+        { label: 'Mistral — Small 4 announcement', kind: 'official', url: 'https://mistral.ai/news/mistral-small-4/' },
+        { label: 'Mistral — Small 4 model card', kind: 'official', url: 'https://docs.mistral.ai/models/model-cards/mistral-small-4-0-26-03' },
+      ],
+    },
   },
 };
