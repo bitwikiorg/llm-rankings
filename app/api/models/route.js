@@ -19,14 +19,14 @@ export async function GET() {
     benchmarkSnapshot: BENCHMARK_SNAPSHOT,
     methodology: {
       defaultView: 'arena',
+      tiers: { S: 'Arena top 10', A: 'Arena top 25', B: 'Arena top 50', C: 'Arena top 100', D: 'Arena ranked', U: 'Not evaluated by Arena' },
       consensus: {
-        benchmarkConsensus: 0.90,
-        freshness: 0.10,
         benchmarkWeights: { arena: 0.50, artificialAnalysis: 0.30, llmStats: 0.20 },
         minimumIndependentSources: 2,
+        releaseDateWeight: 0,
       },
       coding: { kilo: 0.50, llmStatsCoding: 0.30, terminalBench: 0.10, sweBenchPro: 0.10 },
-      note: 'Arena is the default leaderboard view. Consensus is a derived secondary view. Kilo is coding-specific and is not used in the general consensus score. Recent releases receive a 10% tie-breaking weight, never enough to override benchmark consensus by themselves.',
+      note: 'Arena Overall is the default source-native rank. Experimental consensus is evidence-only and secondary. Release date is metadata and never changes benchmark rank.',
     },
   });
 }
