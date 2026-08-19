@@ -1,0 +1,11 @@
+.r-scale-grid{grid-template-columns:repeat(4,1fr)}
+.r-rank-source-llmStats strong,.r-rank-source-artificialAnalysis strong,.r-primary-source strong{color:var(--r-cyan)}
+.r-rank-source-llmStats span,.r-rank-source-artificialAnalysis span{color:#6f91a5}
+.r-primary-source{padding-left:8px;border-left:2px solid rgba(98,200,242,.45)}
+.r-primary-source strong{font-size:15px}
+.r-primary-source span{color:#8ab7c9}
+.r-primary-source small{color:#647c89}
+.r-scale-grid article:nth-child(2){border-color:rgba(98,200,242,.22);background:linear-gradient(180deg,rgba(98,200,242,.045),#0e1219)}
+.r-benchmark-note{border-color:rgba(98,200,242,.20)}
+@media(max-width:1100px){.r-scale-grid{grid-template-columns:repeat(2,1fr)}.r-scale-grid article:last-child{grid-column:auto}}
+@media(max-width:760px){.r-scale-grid{grid-template-columns:1fr}.r-scale-grid article:last-child{grid-column:auto}}
