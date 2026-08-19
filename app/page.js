@@ -1,250 +1,315 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+
+const METRICS = [
+  { key: 'overall', label: 'Overall', short: 'INDEX', description: '45% Arena · 30% Artificial Analysis · 25% LLM Stats' },
+  { key: 'reasoning', label: 'Reasoning', short: 'REASON', description: 'LLM Stats reasoning · AA intelligence · GPQA' },
+  { key: 'coding', label: 'Coding', short: 'CODE', description: 'Kilo · LLM Stats coding · Terminal-Bench · SWE-bench Pro' },
+  { key: 'agent', label: 'Agents', short: 'AGENT', description: 'LLM Stats agent · agent/task benchmarks' },
+  { key: 'value', label: 'Value', short: 'VALUE', description: '70% capability index · 30% token affordability' },
+  { key: 'affordability', label: 'Price', short: 'PRICE', description: 'Lower blended provider token cost ranks higher' },
+  { key: 'context', label: 'Context', short: 'CTX', description: 'Larger published context window ranks higher' },
+];
 
 const fmt = value => value == null ? '—' : Number(value).toLocaleString();
+const fmtScore = value => value == null ? '—' : Number(value).toFixed(1);
 const fmtContext = value => value == null ? '—' : value >= 1_000_000 ? `${(value / 1_000_000).toFixed(value % 1_000_000 ? 1 : 0)}M` : `${Math.round(value / 1000)}K`;
-const fmtPrice = value => value == null ? '—' : `$${Number(value).toFixed(2)}`;
+const fmtPrice = value => value == null ? '—' : Number(value) < 0.1 ? `$${Number(value).toFixed(3)}` : `$${Number(value).toFixed(2)}`;
 const fmtDate = date => date ? new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(`${date}T00:00:00Z`)) : 'Unknown';
 
-function offers(model) {
+function providerOffers(model) {
   return [
-    model.prices?.venice && { key: 'venice', label: 'V', ...model.prices.venice },
-    model.prices?.morpheus && { key: 'morpheus', label: 'M', ...model.prices.morpheus },
+    model.prices?.venice && { key: 'venice', label: 'V', name: 'Venice', ...model.prices.venice },
+    model.prices?.morpheus && { key: 'morpheus', label: 'M', name: 'Morpheus', ...model.prices.morpheus },
   ].filter(Boolean);
-}
-
-function bestInput(model) {
-  const values = offers(model).map(item => Number(item.input)).filter(Number.isFinite);
-  return values.length ? Math.min(...values) : null;
-}
-
-function daysOld(date) {
-  if (!date) return null;
-  const value = Date.now() - new Date(`${date}T00:00:00Z`).getTime();
-  return Number.isFinite(value) ? Math.max(0, Math.floor(value / 86400000)) : null;
 }
 
 function sourceHref(sources, key) {
   return sources?.[key]?.url || null;
 }
 
-function ProviderPills({ model }) {
-  return <div className="r-providers">
-    {model.providers?.venice && <span className="r-provider r-provider-venice">Venice</span>}
-    {model.providers?.morpheus && <span className="r-provider r-provider-morpheus">Morpheus</span>}
+function SourceLink({ href, children, className = '' }) {
+  if (!href) return <span className={className}>{children}</span>;
+  return <a className={className} href={href} target="_blank" rel="noreferrer">{children}<span aria-hidden="true">↗</span></a>;
+}
+
+function ProviderMarks({ model }) {
+  return <div className="provider-marks" aria-label="Provider availability">
+    {model.providers?.venice && <span className="provider-mark provider-venice" title="Available on Venice">V</span>}
+    {model.providers?.morpheus && <span className="provider-mark provider-morpheus" title="Available on Morpheus">M</span>}
   </div>;
 }
 
-function Grade({ model }) {
-  const tier = model.rank ? model.ranking?.tier : null;
-  if (!tier) return <span className="r-no-grade" title="Arena grade unavailable">—</span>;
-  return <span className={`r-grade r-grade-${tier}`} title="Arena Overall rank band">{tier}</span>;
-}
-
-function RankMark({ model }) {
-  const rank = model.primaryRank;
-  if (!rank) return <div className="r-rank r-rank-pending"><strong>—</strong><span>Pending</span></div>;
-  return <div className={`r-rank r-rank-source-${rank.source}`}>
-    <strong>#{rank.rank}</strong>
-    <span>{rank.label}</span>
+function Price({ model }) {
+  const rows = providerOffers(model);
+  if (!rows.length) return <span className="muted">—</span>;
+  return <div className="price-stack">
+    {rows.map(row => <div className="price-row" key={row.key} title={`${row.name} · USD / 1M tokens · input / output`}>
+      <span>{row.label}</span><b>{fmtPrice(row.input)}</b><i>/</i><b>{fmtPrice(row.output)}</b>
+    </div>)}
   </div>;
-}
-
-function NativeSignal({ model }) {
-  const rank = model.primaryRank;
-  if (!rank) return <div className="r-primary r-primary-pending"><strong>Pending</strong><span>No published overall rank</span></div>;
-  if (rank.source === 'arena') {
-    return <div className="r-primary r-primary-arena"><strong>{rank.score ?? '—'}</strong><span>Arena score</span><small>{model.benchmarks?.arena?.votes ? `${fmt(model.benchmarks.arena.votes)} human votes` : 'human preference'}</small></div>;
-  }
-  if (rank.source === 'llmStats') {
-    return <div className="r-primary r-primary-source"><strong>#{rank.rank}</strong><span>LLM Stats overall rank</span><small>score {rank.score ?? '—'} · LLM Stats scale</small></div>;
-  }
-  return <div className="r-primary r-primary-source"><strong>#{rank.rank}</strong><span>{rank.label} rank</span><small>score {rank.score ?? '—'}</small></div>;
-}
-
-function PriceCell({ model }) {
-  const rows = offers(model);
-  if (!rows.length) return <span className="r-muted">Not listed</span>;
-  return <div className="r-price-list">{rows.map(row => <div className="r-price" key={row.key}><span className={`r-price-provider r-price-${row.key}`}>{row.label}</span><b>{fmtPrice(row.input)}</b><i>/</i><b>{fmtPrice(row.output)}</b></div>)}</div>;
-}
-
-function Freshness({ model }) {
-  const age = daysOld(model.releaseDate);
-  if (age == null) return <span className="r-muted">Date unknown</span>;
-  const width = Math.max(3, Math.min(100, 100 - age / 180 * 100));
-  return <div className="r-fresh" title={`${age} days since release / announcement`}><div><i style={{ width: `${width}%` }} /></div><span>{age}d</span></div>;
 }
 
 function Evidence({ model, sources }) {
-  const b = model.benchmarks || {};
-  const rows = [
-    b.arena?.score != null && { key: 'arena', label: 'Arena', value: b.arena.rank ? `#${b.arena.rank} · ${b.arena.score}` : `${b.arena.score} · AutoEval` },
-    b.artificialAnalysis?.intelligence != null && { key: 'artificialAnalysis', label: 'AA', value: `${b.artificialAnalysis.intelligence}/100` },
-    b.llmStats?.overall != null && { key: 'llmStats', label: 'LLM Stats', value: b.llmStats.rank ? `#${b.llmStats.rank} · ${b.llmStats.overall}` : b.llmStats.overall },
-  ].filter(Boolean);
-  return <div className="r-evidence">
-    {rows.map(row => {
-      const href = sourceHref(sources, row.key);
-      const body = <><b>{row.label}</b><span>{row.value}</span></>;
-      return href ? <a href={href} key={row.key} target="_blank" rel="noreferrer">{body}<i>↗</i></a> : <span key={row.key}>{body}</span>;
-    })}
-    <small>{model.ranking?.sourceCount || 0}/3 overall sources · {model.ranking?.confidence || 'none'}</small>
+  const arena = model.publishedRanks?.arena;
+  const llm = model.publishedRanks?.llmStats;
+  const aa = model.publishedRanks?.artificialAnalysis;
+
+  return <div className="evidence-stack">
+    {arena && <SourceLink href={sourceHref(sources, 'arena')} className="evidence-link"><span>Arena</span><b>{arena.rank ? `#${arena.rank}` : arena.score}</b></SourceLink>}
+    {aa && <SourceLink href={sourceHref(sources, 'artificialAnalysis')} className="evidence-link"><span>AA</span><b>{aa.rank ? `#${aa.rank}` : aa.score}</b></SourceLink>}
+    {llm && <SourceLink href={sourceHref(sources, 'llmStats')} className="evidence-link"><span>LLM</span><b>{llm.rank ? `#${llm.rank}` : llm.score}</b></SourceLink>}
+    {!arena && !aa && !llm && <span className="muted">No independent score</span>}
   </div>;
 }
 
-function allSources(model, sourceMap) {
-  const keyed = (model.sourceKeys || []).map(key => ({ key, ...sourceMap?.[key] })).filter(item => item.url);
-  const researched = (model.researchSources || []).map((item, index) => ({ key: `research-${index}`, ...item }));
+function allReferences(model, sources) {
+  const sourceKeys = (model.sourceKeys || [])
+    .map(key => ({ key, ...sources?.[key] }))
+    .filter(item => item.url);
+  const research = (model.researchSources || []).map((item, index) => ({ key: `research-${index}`, ...item }));
   const hf = model.huggingFace ? [{ key: 'hf', label: 'Hugging Face', kind: 'model', url: model.huggingFace }] : [];
-  return [...keyed, ...researched, ...hf].filter((item, index, rows) => rows.findIndex(other => other.url === item.url) === index);
+  return [...sourceKeys, ...research, ...hf].filter((item, index, rows) => item.url && rows.findIndex(other => other.url === item.url) === index);
 }
 
-function BenchmarkMetric({ href, label, value, meta }) {
-  return <div className="r-benchmark-metric">
-    {href ? <a href={href} target="_blank" rel="noreferrer">{label} ↗</a> : <span>{label}</span>}
-    <b>{value}</b>
-    <small>{meta}</small>
+function ScoreCell({ model, metric }) {
+  const score = model.scores?.[metric];
+  const coverage = ['overall', 'reasoning', 'coding', 'agent'].includes(metric) ? model.coverage?.[metric] : null;
+  return <div className="score-cell">
+    <strong>{fmtScore(score)}</strong>
+    {coverage != null && <span>{coverage}% evidence</span>}
   </div>;
 }
 
-const TASK_BENCHMARKS = [
-  ['gpqa', 'GPQA Diamond', '%'],
-  ['terminalBench', 'Terminal-Bench', '%'],
-  ['sweBenchPro', 'SWE-bench Pro', '%'],
-  ['hle', "Humanity's Last Exam", '%'],
-  ['frontierMath', 'FrontierMath', '%'],
-  ['agentsLastExam', "Agents' Last Exam", '%'],
-  ['osWorldVerified', 'OSWorld Verified', '%'],
-  ['automationBench', 'AutomationBench', '%'],
-  ['frontierCode', 'FrontierCode', '%'],
-  ['deepSWE', 'DeepSWE', '%'],
-  ['cyberGym', 'CyberGym', '%'],
-  ['exploitBench', 'ExploitBench', '%'],
-];
-
-function TaskBenchmarks({ model }) {
-  const vendor = model.benchmarks?.vendor || {};
-  const rows = TASK_BENCHMARKS.map(([key, label, suffix]) => vendor[key] != null ? { key, label, value: `${vendor[key]}${suffix}` } : null).filter(Boolean);
-  if (!rows.length) return <div className="r-task-empty">No task-level measurements in this snapshot.</div>;
-  return <div className="r-task-grid">{rows.map(row => <div key={row.key}><span>{row.label}</span><b>{row.value}</b><small>task benchmark</small></div>)}</div>;
+function MetricMini({ model, metric }) {
+  const spec = METRICS.find(item => item.key === metric);
+  const rank = model.metricRanks?.[metric];
+  return <div className="metric-mini">
+    <span>{spec?.short}</span>
+    <strong>{rank ? `#${rank}` : '—'}</strong>
+    <small>{fmtScore(model.scores?.[metric])}</small>
+  </div>;
 }
 
-function DetailPanel({ model, sources }) {
+function Detail({ model, sources }) {
+  const refs = allReferences(model, sources);
   const b = model.benchmarks || {};
-  const refs = allSources(model, sources);
-  const arenaMeta = b.arena?.rank ? `Human rank #${b.arena.rank}${b.arena.votes ? ` · ${fmt(b.arena.votes)} votes` : ''}${b.arena.spread ? ` · spread ${b.arena.spread}` : ''}` : b.arena?.score != null ? `Human rank pending · ${b.arena.spread || 'score-only observation'}` : 'No Arena observation';
-  const llmMeta = b.llmStats ? `${b.llmStats.rank ? `Overall rank #${b.llmStats.rank} · ` : ''}reasoning ${b.llmStats.reasoning ?? '—'} · coding ${b.llmStats.coding ?? '—'} · agent ${b.llmStats.agent ?? '—'}` : 'No LLM Stats observation';
-  return <div className="r-detail">
-    <div className="r-detail-head"><div><span>Published rank</span><strong>{model.primaryRank ? `#${model.primaryRank.rank} · ${model.primaryRank.label}` : 'Pending'}</strong><small>Source-native scale</small></div><div><span>Ranking status</span><strong>{model.evaluationState || model.ranking?.basis}</strong><small>{model.rank ? 'Arena band available' : 'Arena band pending'}</small></div></div>
-    <div className="r-benchmark-grid">
-      <BenchmarkMetric href={sourceHref(sources, 'arena')} label="Arena Overall" value={b.arena?.score != null ? `${b.arena.score} score` : 'Not evaluated'} meta={arenaMeta} />
-      <BenchmarkMetric href={sourceHref(sources, 'artificialAnalysis')} label="Artificial Analysis" value={b.artificialAnalysis?.intelligence != null ? `${b.artificialAnalysis.intelligence}/100` : 'Not evaluated'} meta={b.artificialAnalysis?.variant ? `Intelligence Index · ${b.artificialAnalysis.variant}` : 'Intelligence Index · 0–100'} />
-      <BenchmarkMetric href={sourceHref(sources, 'llmStats')} label="LLM Stats" value={b.llmStats?.overall ?? 'Not evaluated'} meta={llmMeta} />
-      <BenchmarkMetric href={sourceHref(sources, 'kilo')} label="Kilo coding" value={b.kilo?.completion != null ? `${b.kilo.completion}%` : 'Not evaluated'} meta={b.kilo?.costPerAttempt != null ? `${fmtPrice(b.kilo.costPerAttempt)} / attempt` : 'coding benchmark'} />
-      <BenchmarkMetric label="Source coverage" value={`${model.ranking?.sourceCount || 0}/3`} meta={`${model.ranking?.confidence || 'none'} · Arena / AA / LLM Stats`} />
+  const vendor = b.vendor || {};
+  const taskRows = [
+    ['GPQA', vendor.gpqa],
+    ['Terminal-Bench', vendor.terminalBench],
+    ['SWE-bench Pro', vendor.sweBenchPro],
+    ["Agents' Last Exam", vendor.agentsLastExam],
+    ['AutomationBench', vendor.automationBench],
+    ['OSWorld', vendor.osWorldVerified],
+    ["Humanity's Last Exam", vendor.hle],
+    ['FrontierMath', vendor.frontierMath],
+  ].filter(([, value]) => value != null);
+
+  return <div className="detail-panel">
+    <div className="detail-metrics">
+      {['overall', 'reasoning', 'coding', 'agent', 'value'].map(metric => <MetricMini key={metric} model={model} metric={metric} />)}
     </div>
-    <div className="r-detail-label r-task-label">Task benchmarks</div>
-    <TaskBenchmarks model={model} />
-    <div className="r-spec-grid"><div><span>Context</span><b>{fmtContext(model.context)}</b></div><div><span>Parameters</span><b>{model.paramsTotalB ? `${model.paramsTotalB}B` : 'Unknown'}</b><small>{model.paramsActiveB ? `${model.paramsActiveB}B active` : ''}</small></div><div><span>Precision</span><b>{model.quantization || 'Not published'}</b></div><div><span>License</span><b>{model.license || model.openness || 'Unknown'}</b></div><div><span>Released / announced</span><b>{fmtDate(model.releaseDate)}</b><small>{model.releaseDateLabel || ''}</small></div><div><span>Capabilities</span><b>{(model.capabilities || []).join(' · ') || 'Unknown'}</b></div></div>
-    <div className="r-detail-bottom"><div><span className="r-detail-label">Provider price · input / output · USD / 1M tokens</span><PriceCell model={model} /></div><div><span className="r-detail-label">References</span><div className="r-sources">{refs.map(ref => <a href={ref.url} key={ref.key} target="_blank" rel="noreferrer"><small>{ref.kind || 'source'}</small>{ref.label} ↗</a>)}</div></div></div>
+
+    <div className="detail-grid">
+      <section>
+        <h3>Model</h3>
+        <dl>
+          <div><dt>Organization</dt><dd>{model.organization || '—'}</dd></div>
+          <div><dt>Released</dt><dd>{fmtDate(model.releaseDate)}</dd></div>
+          <div><dt>Parameters</dt><dd>{model.paramsTotalB ? `${model.paramsTotalB}B${model.paramsActiveB ? ` · ${model.paramsActiveB}B active` : ''}` : 'Unknown'}</dd></div>
+          <div><dt>Precision</dt><dd>{model.quantization || 'Not published'}</dd></div>
+          <div><dt>License</dt><dd>{model.license || model.openness || 'Unknown'}</dd></div>
+          <div><dt>Capabilities</dt><dd>{(model.capabilities || []).join(' · ') || 'Unknown'}</dd></div>
+        </dl>
+      </section>
+
+      <section>
+        <h3>Published evidence</h3>
+        <dl>
+          <div><dt>Arena</dt><dd>{b.arena ? `${b.arena.rank ? `#${b.arena.rank} · ` : ''}${b.arena.score ?? '—'}${b.arena.votes ? ` · ${fmt(b.arena.votes)} votes` : ''}` : '—'}</dd></div>
+          <div><dt>Artificial Analysis</dt><dd>{b.artificialAnalysis?.intelligence != null ? `${b.artificialAnalysis.intelligence} Intelligence Index${b.artificialAnalysis.rank ? ` · #${b.artificialAnalysis.rank}` : ''}` : '—'}</dd></div>
+          <div><dt>LLM Stats</dt><dd>{b.llmStats?.overall != null ? `${b.llmStats.rank ? `#${b.llmStats.rank} · ` : ''}${b.llmStats.overall} overall` : '—'}</dd></div>
+          <div><dt>Kilo</dt><dd>{b.kilo?.completion != null ? `${b.kilo.completion}% completion${b.kilo.costPerAttempt != null ? ` · ${fmtPrice(b.kilo.costPerAttempt)}/attempt` : ''}` : '—'}</dd></div>
+        </dl>
+      </section>
+
+      <section>
+        <h3>Task measurements</h3>
+        {taskRows.length ? <div className="task-list">{taskRows.map(([label, value]) => <div key={label}><span>{label}</span><b>{value}%</b></div>)}</div> : <p className="muted">No task-level measurements in this snapshot.</p>}
+      </section>
+    </div>
+
+    <div className="reference-block">
+      <h3>References</h3>
+      <div className="reference-links">
+        {refs.map(ref => <SourceLink key={ref.key} href={ref.url} className="reference-link"><small>{ref.kind || 'source'}</small><b>{ref.label}</b></SourceLink>)}
+      </div>
+    </div>
   </div>;
-}
-
-function ScaleGuide({ sources }) {
-  const items = [
-    { key: 'arena', title: 'Arena', value: 'rank + score', body: 'Human-preference leaderboard with rank, score, vote count and rank spread.' },
-    { key: 'llmStats', title: 'LLM Stats', value: 'rank + score', body: 'Overall model ranking with reasoning, coding and agent sub-scores on the LLM Stats scale.' },
-    { key: 'artificialAnalysis', title: 'Artificial Analysis', value: '0–100 index', body: 'Independent Intelligence Index across current capability evaluations.' },
-    { key: null, title: 'Provider price', value: 'USD / 1M', body: 'Venice and Morpheus input and output token pricing.' },
-  ];
-  return <section className="r-shell r-scales"><div className="r-section-head"><div><span className="r-kicker">SOURCES & SCALES</span><h2>Benchmark sources</h2></div><p>Each source is displayed on its native scale.</p></div><div className="r-scale-grid">{items.map((item, index) => {
-    const href = item.key ? sourceHref(sources, item.key) : null;
-    return <article key={index}><span>{href ? <a href={href} target="_blank" rel="noreferrer">{item.title} ↗</a> : item.title}</span><strong>{item.value}</strong><p>{item.body}</p></article>;
-  })}</div><div className="r-benchmark-note"><b>Recent models:</b> GLM 5.3 — LLM Stats #6 · DeepSeek V4 Pro 0813 — LLM Stats #7. Arena human ranks pending.</div></section>;
-}
-
-function ArenaChart({ models }) {
-  const rows = models.filter(model => model.rank && model.benchmarks?.arena?.score != null).sort((a,b) => a.rank - b.rank).slice(0, 12);
-  if (!rows.length) return null;
-  const min = Math.min(...rows.map(model => model.benchmarks.arena.score)) - 5;
-  const max = Math.max(...rows.map(model => model.benchmarks.arena.score));
-  return <div className="r-bars">{rows.map(model => { const width = 24 + ((model.benchmarks.arena.score - min) / Math.max(1, max - min)) * 76; return <div className="r-bar-row" key={model.id}><span>#{model.rank}</span><b>{model.name}</b><div><i className={`r-bar-${model.provider}`} style={{ width: `${width}%` }} /><strong>{model.benchmarks.arena.score}</strong></div></div>; })}</div>;
-}
-
-function RecentRankChart({ models }) {
-  const rows = models.filter(model => model.primaryRank && model.primaryRank.source !== 'arena').sort((a,b) => a.primaryRank.rank - b.primaryRank.rank).slice(0, 10);
-  if (!rows.length) return <div className="r-empty">No recent source-ranked models outside Arena.</div>;
-  return <div className="r-bars">{rows.map(model => <div className="r-bar-row" key={model.id}><span>#{model.primaryRank.rank}</span><b>{model.name}</b><div><i className="r-bar-beta" style={{ width: `${Math.max(26, 100 - model.primaryRank.rank * 5)}%` }} /><strong>{model.primaryRank.label}</strong></div></div>)}</div>;
 }
 
 export default function Home() {
   const [data, setData] = useState({ models: [], status: {}, sources: {}, updated: '' });
-  const [query, setQuery] = useState('');
+  const [metric, setMetric] = useState('overall');
   const [provider, setProvider] = useState('all');
-  const [license, setLicense] = useState('all');
-  const [sort, setSort] = useState('primary');
+  const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState(null);
-  const [compare, setCompare] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  useEffect(() => { fetch('/api/models').then(response => response.json()).then(setData).catch(() => setData(current => ({ ...current, error: true }))); }, []);
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/models')
+      .then(response => {
+        if (!response.ok) throw new Error(`API ${response.status}`);
+        return response.json();
+      })
+      .then(payload => { if (alive) setData(payload); })
+      .catch(err => { if (alive) setError(err.message || 'Unable to load rankings'); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, []);
 
-  const models = data.models || [];
-  const arenaModels = useMemo(() => models.filter(model => model.rank).sort((a, b) => a.rank - b.rank), [models]);
-  const recentSourceModels = useMemo(() => models.filter(model => model.primaryRank && model.primaryRank.source !== 'arena').sort((a,b) => a.primaryRank.rank - b.primaryRank.rank), [models]);
-  const arenaLeader = arenaModels[0];
-  const recentLeader = recentSourceModels[0];
-  const openLeader = arenaModels.find(model => String(model.openness || '').toLowerCase().includes('open'));
-  const overlap = models.filter(model => model.providers?.venice && model.providers?.morpheus).length;
+  const activeMetric = METRICS.find(item => item.key === metric) || METRICS[0];
 
-  const filtered = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    const rows = models.filter(model => {
-      if (needle && !`${model.name} ${model.organization} ${(model.providerIds?.venice || []).join(' ')} ${(model.providerIds?.morpheus || []).join(' ')}`.toLowerCase().includes(needle)) return false;
-      if (provider === 'venice' && !model.providers?.venice) return false;
-      if (provider === 'morpheus' && !model.providers?.morpheus) return false;
-      if (provider === 'both' && !(model.providers?.venice && model.providers?.morpheus)) return false;
-      const open = String(model.openness || model.license || '').toLowerCase().includes('open') || String(model.license || '').toLowerCase().includes('apache') || String(model.license || '').toLowerCase().includes('mit');
-      if (license === 'open' && !open) return false;
-      if (license === 'closed' && open) return false;
-      return true;
-    });
-    return [...rows].sort((a, b) => {
-      if (sort === 'arena') return (a.rank ?? 9999) - (b.rank ?? 9999);
-      if (sort === 'llmStats') return (a.benchmarks?.llmStats?.rank ?? 9999) - (b.benchmarks?.llmStats?.rank ?? 9999) || (b.benchmarks?.llmStats?.overall ?? -1) - (a.benchmarks?.llmStats?.overall ?? -1);
-      if (sort === 'intelligence') return (b.benchmarks?.artificialAnalysis?.intelligence ?? -1) - (a.benchmarks?.artificialAnalysis?.intelligence ?? -1);
-      if (sort === 'coding') return (b.benchmarks?.kilo?.completion ?? b.benchmarks?.llmStats?.coding ?? -1) - (a.benchmarks?.kilo?.completion ?? a.benchmarks?.llmStats?.coding ?? -1);
-      if (sort === 'price') return (bestInput(a) ?? Number.MAX_VALUE) - (bestInput(b) ?? Number.MAX_VALUE);
-      if (sort === 'newest') return (b.releaseDate ? new Date(`${b.releaseDate}T00:00:00Z`).getTime() : 0) - (a.releaseDate ? new Date(`${a.releaseDate}T00:00:00Z`).getTime() : 0);
-      if (a.primaryRank && b.primaryRank) return a.primaryRank.rank - b.primaryRank.rank || (a.primaryRank.source === 'arena' ? -1 : 1);
-      if (a.primaryRank) return -1;
-      if (b.primaryRank) return 1;
-      return a.name.localeCompare(b.name);
-    });
-  }, [models, query, provider, license, sort]);
+  const models = useMemo(() => {
+    const term = query.trim().toLowerCase();
+    return [...(data.models || [])]
+      .filter(model => {
+        if (provider === 'venice' && !model.providers?.venice) return false;
+        if (provider === 'morpheus' && !model.providers?.morpheus) return false;
+        if (provider === 'both' && !(model.providers?.venice && model.providers?.morpheus)) return false;
+        if (term && !`${model.name} ${model.organization} ${model.id}`.toLowerCase().includes(term)) return false;
+        return true;
+      })
+      .sort((a, b) => {
+        const rankA = a.metricRanks?.[metric] ?? Number.MAX_SAFE_INTEGER;
+        const rankB = b.metricRanks?.[metric] ?? Number.MAX_SAFE_INTEGER;
+        return rankA - rankB || a.name.localeCompare(b.name);
+      });
+  }, [data.models, metric, provider, query]);
 
-  const compared = compare.map(id => models.find(model => model.id === id)).filter(Boolean);
-  const toggleCompare = id => setCompare(current => current.includes(id) ? current.filter(item => item !== id) : current.length < 4 ? [...current, id] : current);
+  const counts = useMemo(() => ({
+    total: data.models?.length || 0,
+    venice: data.models?.filter(model => model.providers?.venice).length || 0,
+    morpheus: data.models?.filter(model => model.providers?.morpheus).length || 0,
+    both: data.models?.filter(model => model.providers?.venice && model.providers?.morpheus).length || 0,
+  }), [data.models]);
 
-  return <main className="r-app">
-    <header className="r-topbar"><a className="r-brand" href="/"><i />LLM INDEX</a><nav><a href="#rankings">Rankings</a><a href="#analysis">Analysis</a><a href="#compare">Compare</a></nav><a className="r-method" href="/methodology">Methodology ↗</a></header>
+  const coreSources = [
+    ['arena', 'Arena'],
+    ['artificialAnalysis', 'Artificial Analysis'],
+    ['llmStats', 'LLM Stats'],
+    ['kilo', 'Kilo'],
+    ['veniceModels', 'Venice models'],
+    ['venicePricing', 'Venice pricing'],
+    ['morModels', 'Morpheus models'],
+    ['morPricing', 'Morpheus pricing'],
+  ];
 
-    <section className="r-hero r-shell"><div><span className="r-kicker">TEXT MODELS · VENICE + MORPHEUS</span><h1>Model rankings.<br/><em>Benchmarks and pricing.</em></h1><p>Text-model rankings across Arena, LLM Stats and Artificial Analysis, with Venice and Morpheus availability, pricing, context, architecture metadata and source-linked evidence.</p></div><aside><div><span>Provider catalog</span><b>{models.length || '—'} text models</b></div><div><span>Research snapshot</span><b>{data.updated || 'Loading…'}</b></div><div><span>Rank sources</span><b>Arena · LLM Stats · AA</b></div></aside></section>
+  return <main>
+    <div className="signal-line" />
+    <header className="site-header shell">
+      <div className="brand-lockup">
+        <div className="brand-mark" aria-hidden="true"><i /><i /><i /></div>
+        <div><strong>LLM INDEX</strong><span>VENICE × MORPHEUS</span></div>
+      </div>
+      <div className="header-meta">
+        <span>{counts.total} text models</span>
+        <span>snapshot {data.updated || '—'}</span>
+      </div>
+    </header>
 
-    <ScaleGuide sources={data.sources} />
-
-    <section className="r-shell r-leaders"><div className="r-section-head"><div><span className="r-kicker">LEADERS</span><h2>Leaderboard leaders</h2></div><p>Current published positions by source.</p></div><div className="r-stat-grid"><article className="r-stat r-stat-purple"><span>Arena leader</span><strong>{arenaLeader ? `#${arenaLeader.rank}` : '—'}</strong><h3>{arenaLeader?.name || 'Loading…'}</h3><p>{arenaLeader ? `${arenaLeader.benchmarks?.arena?.score} Arena score · ${fmt(arenaLeader.benchmarks?.arena?.votes)} votes` : ''}</p></article><article className="r-stat r-stat-cyan"><span>Recent non-Arena rank</span><strong>{recentLeader ? `#${recentLeader.primaryRank.rank}` : '—'}</strong><h3>{recentLeader?.name || '—'}</h3><p>{recentLeader ? `${recentLeader.primaryRank.label} · score ${recentLeader.primaryRank.score}` : ''}</p></article><article className="r-stat r-stat-green"><span>Open-weight Arena leader</span><strong>{openLeader ? `#${openLeader.rank}` : '—'}</strong><h3>{openLeader?.name || '—'}</h3><p>{openLeader?.license || openLeader?.openness || ''}</p></article><article className="r-stat"><span>Provider overlap</span><strong>{overlap || '—'}</strong><h3>Venice + Morpheus</h3><p>Shared catalog entries.</p></article></div></section>
-
-    <section id="analysis" className="r-shell r-analysis"><div className="r-section-head"><div><span className="r-kicker">VISUAL ANALYSIS</span><h2>Benchmark views</h2></div><p>Arena human-preference scores and recent source rankings.</p></div><div className="r-viz-grid"><article className="r-viz"><header><div><span>ARENA OVERALL</span><h3>Top human-ranked models</h3></div><small>score</small></header><ArenaChart models={arenaModels} /></article><article className="r-viz"><header><div><span>RECENT SOURCE RANKS</span><h3>Models without an Arena human rank</h3></div><small>published rank</small></header><RecentRankChart models={recentSourceModels} /></article></div></section>
-
-    <section id="rankings" className="r-shell r-rankings"><div className="r-section-head"><div><span className="r-kicker">LEADERBOARD</span><h2>Text model rankings</h2></div><p>{filtered.length} visible · click a row for benchmarks, architecture, pricing and references.</p></div><div className="r-rule"><b>Rank source:</b> Arena Overall where available; LLM Stats or Artificial Analysis for exact models without an Arena human rank. Source labels identify each ranking scale.</div>
-      <div className="r-controls"><label className="r-search"><span>⌕</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search model, lab, provider ID…" /></label><div className="r-provider-filter">{['all','venice','morpheus','both'].map(item => <button key={item} onClick={() => setProvider(item)} className={provider === item ? `active ${item}` : item}>{item === 'all' ? 'All' : item[0].toUpperCase() + item.slice(1)}</button>)}</div><select value={license} onChange={event => setLicense(event.target.value)}><option value="all">All licenses</option><option value="open">Open weights</option><option value="closed">Proprietary</option></select><select value={sort} onChange={event => setSort(event.target.value)}><option value="primary">Published rank</option><option value="arena">Arena rank</option><option value="llmStats">LLM Stats rank</option><option value="intelligence">AA Intelligence</option><option value="coding">Coding</option><option value="price">Lowest input price</option><option value="newest">Newest</option></select></div>
-
-      <div className="r-table-wrap"><table className="r-table"><colgroup><col className="r-col-rank"/><col className="r-col-grade"/><col className="r-col-model"/><col className="r-col-signal"/><col className="r-col-provider"/><col className="r-col-price"/><col className="r-col-release"/><col className="r-col-context"/><col className="r-col-evidence"/><col className="r-col-compare"/></colgroup><thead><tr><th>Source rank</th><th>Arena grade</th><th>Model</th><th>Native result</th><th>Providers</th><th>Price <small>$/1M · in/out</small></th><th>Released</th><th>Context</th><th>Evidence</th><th>+</th></tr></thead><tbody>{filtered.map(model => <Fragment key={model.id}><tr className={expanded === model.id ? 'r-model-row open' : 'r-model-row'} onClick={() => setExpanded(expanded === model.id ? null : model.id)}><td><RankMark model={model} /></td><td><Grade model={model} /></td><td><div className="r-model"><strong>{model.name}</strong><span>{model.organization}</span><small>{model.openness || model.license || 'Unknown license'}</small></div></td><td><NativeSignal model={model} /></td><td><ProviderPills model={model} /></td><td><PriceCell model={model} /></td><td><div className="r-release"><strong>{fmtDate(model.releaseDate)}</strong><Freshness model={model} /></div></td><td><strong className="r-context">{fmtContext(model.context)}</strong></td><td><Evidence model={model} sources={data.sources} /></td><td><button className={compare.includes(model.id) ? 'r-compare active' : 'r-compare'} onClick={event => { event.stopPropagation(); toggleCompare(model.id); }}>{compare.includes(model.id) ? '✓' : '+'}</button></td></tr>{expanded === model.id && <tr className="r-detail-row"><td colSpan="10"><DetailPanel model={model} sources={data.sources} /></td></tr>}</Fragment>)}</tbody></table></div>
+    <section className="hero shell">
+      <div>
+        <span className="eyebrow">TEXT MODEL RANKINGS</span>
+        <h1>One index.<br /><em>Every signal.</em></h1>
+      </div>
+      <div className="hero-copy">
+        <p>A compact ranking surface for text models available through Venice and Morpheus. Compare capability, reasoning, coding, agents, value, price and context without hunting across provider dashboards.</p>
+        <p className="method-note">Index scores normalize heterogeneous benchmark evidence <b>within this provider model set</b>. Published source ranks and scores remain visible separately.</p>
+      </div>
     </section>
 
-    <section id="compare" className="r-shell r-compare-section"><div className="r-section-head"><div><span className="r-kicker">COMPARE</span><h2>{compared.length ? `${compared.length} models selected` : 'Select up to four models'}</h2></div><p>Source ranks, benchmark results, context and provider pricing side by side.</p></div>{compared.length ? <div className="r-compare-grid">{compared.map(model => <article key={model.id}><header><RankMark model={model}/><Grade model={model}/></header><h3>{model.name}</h3><ProviderPills model={model}/><dl><div><dt>Published rank</dt><dd>{model.primaryRank ? `#${model.primaryRank.rank} · ${model.primaryRank.label}` : 'Pending'}</dd></div><div><dt><a href={sourceHref(data.sources,'arena')} target="_blank" rel="noreferrer">Arena ↗</a></dt><dd>{model.benchmarks?.arena?.rank ? `#${model.benchmarks.arena.rank} · ${model.benchmarks.arena.score}` : model.benchmarks?.arena?.score ? `${model.benchmarks.arena.score} · AutoEval` : '—'}</dd></div><div><dt><a href={sourceHref(data.sources,'llmStats')} target="_blank" rel="noreferrer">LLM Stats ↗</a></dt><dd>{model.benchmarks?.llmStats?.rank ? `#${model.benchmarks.llmStats.rank} · ${model.benchmarks.llmStats.overall}` : model.benchmarks?.llmStats?.overall ?? '—'}</dd></div><div><dt><a href={sourceHref(data.sources,'artificialAnalysis')} target="_blank" rel="noreferrer">AA ↗</a></dt><dd>{model.benchmarks?.artificialAnalysis?.intelligence != null ? `${model.benchmarks.artificialAnalysis.intelligence}/100` : '—'}</dd></div><div><dt>Kilo coding</dt><dd>{model.benchmarks?.kilo?.completion != null ? `${model.benchmarks.kilo.completion}%` : '—'}</dd></div><div><dt>Context</dt><dd>{fmtContext(model.context)}</dd></div><div><dt>Released</dt><dd>{fmtDate(model.releaseDate)}</dd></div></dl><PriceCell model={model}/></article>)}</div> : <div className="r-compare-empty">Use the <b>+</b> control in the leaderboard to compare models.</div>}</section>
+    <section className="source-rail shell" aria-label="Primary data sources">
+      <span>SOURCES</span>
+      <div>{coreSources.map(([key, label]) => <SourceLink key={key} href={sourceHref(data.sources, key)}>{label}</SourceLink>)}</div>
+    </section>
 
-    <footer className="r-footer r-shell"><div><b>LLM INDEX</b><span>Text-model research across Venice + Morpheus.</span></div><div><a href="/methodology">Methodology</a><a href="https://github.com/bitwikiorg/llm-rankings" target="_blank" rel="noreferrer">GitHub ↗</a></div></footer>
+    <section className="rank-surface shell">
+      <div className="metric-rail" role="tablist" aria-label="Ranking metric">
+        {METRICS.map(item => <button key={item.key} className={metric === item.key ? 'active' : ''} onClick={() => { setMetric(item.key); setExpanded(null); }} type="button">
+          <span>{item.short}</span><b>{item.label}</b>
+        </button>)}
+      </div>
+
+      <div className="metric-context">
+        <div><span>RANKING BY</span><strong>{activeMetric.label}</strong></div>
+        <p>{activeMetric.description}</p>
+      </div>
+
+      <div className="toolbar">
+        <label className="search-box"><span>⌕</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search model or lab" /></label>
+        <div className="provider-filter" role="group" aria-label="Provider filter">
+          {[['all', 'All'], ['venice', 'Venice'], ['morpheus', 'Morpheus'], ['both', 'Both']].map(([key, label]) => <button key={key} type="button" onClick={() => setProvider(key)} className={provider === key ? 'active' : ''}>{label}</button>)}
+        </div>
+        <div className="result-count"><b>{models.length}</b><span>shown</span></div>
+      </div>
+
+      {loading && <div className="state-panel">Loading ranking data…</div>}
+      {error && <div className="state-panel error">Unable to load rankings: {error}</div>}
+
+      {!loading && !error && <div className="table-wrap">
+        <table className="rank-table">
+          <thead><tr>
+            <th className="col-rank">Rank</th>
+            <th>Model</th>
+            <th className="col-score">{activeMetric.label}</th>
+            <th>Published evidence</th>
+            <th className="col-access">Access</th>
+            <th className="col-price">Price <small>in / out</small></th>
+            <th className="col-context">Context</th>
+            <th className="col-open" aria-label="Details" />
+          </tr></thead>
+          <tbody>
+            {models.map(model => {
+              const rank = model.metricRanks?.[metric];
+              const isOpen = expanded === model.id;
+              return <>
+                <tr key={model.id} className={isOpen ? 'model-row open' : 'model-row'} onClick={() => setExpanded(isOpen ? null : model.id)}>
+                  <td className="rank-cell"><span>{rank ? String(rank).padStart(2, '0') : '—'}</span></td>
+                  <td className="model-cell"><strong>{model.name}</strong><span>{model.organization}</span></td>
+                  <td><ScoreCell model={model} metric={metric} /></td>
+                  <td><Evidence model={model} sources={data.sources} /></td>
+                  <td><ProviderMarks model={model} /></td>
+                  <td><Price model={model} /></td>
+                  <td className="context-cell"><b>{fmtContext(model.context)}</b></td>
+                  <td className="open-cell"><button type="button" aria-label={`${isOpen ? 'Close' : 'Open'} ${model.name} details`} onClick={event => { event.stopPropagation(); setExpanded(isOpen ? null : model.id); }}>{isOpen ? '−' : '+'}</button></td>
+                </tr>
+                {isOpen && <tr key={`${model.id}-detail`} className="detail-row"><td colSpan="8"><Detail model={model} sources={data.sources} /></td></tr>}
+              </>;
+            })}
+          </tbody>
+        </table>
+        {!models.length && <div className="state-panel">No models match these filters.</div>}
+      </div>}
+    </section>
+
+    <section className="method shell" id="method">
+      <div className="method-title"><span>METHOD</span><h2>Transparent normalization.</h2></div>
+      <div className="method-grid">
+        <article><b>01</b><h3>Normalize</h3><p>Each tracked benchmark is converted to a 0–100 percentile relative to the Venice + Morpheus models that have that measurement. Native values are never displayed as equivalent scales.</p></article>
+        <article><b>02</b><h3>Combine</h3><p>Overall = 45% Arena, 30% Artificial Analysis, 25% LLM Stats. Missing sources receive a neutral 50 prior instead of zero; evidence coverage remains visible.</p></article>
+        <article><b>03</b><h3>Rank</h3><p>Models are ordered by the selected normalized metric. External ranks remain citations and context—not a second ranking system mixed into the index.</p></article>
+      </div>
+      <div className="method-foot">
+        <span>Provider counts: Venice {counts.venice} · Morpheus {counts.morpheus} · both {counts.both}</span>
+        <span>Scores are comparative research signals, not claims of universal model quality.</span>
+      </div>
+    </section>
+
+    <footer className="footer shell"><strong>LLM INDEX</strong><span>Source-first text model intelligence for Venice + Morpheus.</span><SourceLink href="https://github.com/bitwikiorg/llm-rankings">GitHub</SourceLink></footer>
   </main>;
 }
