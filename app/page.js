@@ -1,16 +1,28 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 const METRICS = [
-  { key: 'overall', label: 'Overall', short: 'INDEX', description: '45% Arena · 30% Artificial Analysis · 25% LLM Stats' },
-  { key: 'reasoning', label: 'Reasoning', short: 'REASON', description: 'LLM Stats reasoning · AA intelligence · GPQA' },
-  { key: 'coding', label: 'Coding', short: 'CODE', description: 'Kilo · LLM Stats coding · Terminal-Bench · SWE-bench Pro' },
-  { key: 'agent', label: 'Agents', short: 'AGENT', description: 'LLM Stats agent · agent/task benchmarks' },
-  { key: 'value', label: 'Value', short: 'VALUE', description: '70% capability index · 30% token affordability' },
-  { key: 'affordability', label: 'Price', short: 'PRICE', description: 'Lower blended provider token cost ranks higher' },
-  { key: 'context', label: 'Context', short: 'CTX', description: 'Larger published context window ranks higher' },
+  { key: 'overall', label: 'Overall', short: 'INDEX', description: '45% Arena · 30% Artificial Analysis · 25% LLM Stats', help: 'Primary LLM Index capability rank. Independent aggregate signals are normalized within the tracked Venice + Morpheus model population, then combined using the displayed weights.' },
+  { key: 'reasoning', label: 'Reasoning', short: 'REASON', description: 'LLM Stats reasoning · AA intelligence · GPQA', help: 'Reasoning-oriented comparison using available reasoning aggregates and task measurements. Missing evidence is treated as uncertainty rather than a zero.' },
+  { key: 'coding', label: 'Coding', short: 'CODE', description: 'Kilo · LLM Stats coding · Terminal-Bench · SWE-bench Pro', help: 'Coding comparison from independent coding leaderboards plus task-level software engineering benchmarks when available.' },
+  { key: 'agent', label: 'Agents', short: 'AGENT', description: 'LLM Stats agent · agent/task benchmarks', help: 'Agentic capability comparison: tool use, autonomous task completion and agent benchmarks. Vendor-reported measurements are labeled separately from independent evidence.' },
+  { key: 'value', label: 'Value', short: 'VALUE', description: '70% capability index · 30% token affordability', help: 'Capability-to-cost ranking. It combines 70% normalized Overall capability with 30% affordability across available Venice and Morpheus prices.' },
+  { key: 'affordability', label: 'Price', short: 'PRICE', description: 'Lower blended provider token cost ranks higher', help: 'Relative affordability using a blended input/output token price. Lower cost receives the higher percentile and rank.' },
+  { key: 'context', label: 'Context', short: 'CTX', description: 'Larger published context window ranks higher', help: 'Ranks the published context window available for the tracked model. Larger context ranks higher; this does not imply better model quality by itself.' },
 ];
+
+const SOURCE_TIPS = {
+  arena: 'Arena human-preference text leaderboard. Source-native ranks and scores are shown as evidence; they are not the LLM Index rank.',
+  artificialAnalysis: 'Artificial Analysis Intelligence Index. Native scores/ranks remain on their original scale and contribute to supported LLM Index metrics.',
+  llmStats: 'LLM Stats aggregate and task indices. Values remain source-native and are used as independent benchmark evidence.',
+  kilo: 'Kilo coding leaderboard. Used as a coding signal rather than a general intelligence rank.',
+  veniceModels: 'Venice model catalog used to determine which text models are available through Venice.',
+  venicePricing: 'Venice pricing source for input/output token cost and provider metadata.',
+  morModels: 'Morpheus model catalog used to determine which text models are available through Morpheus.',
+  morPricing: 'Morpheus pricing source for input/output token cost and provider metadata.',
+};
 
 const fmt = value => value == null ? '—' : Number(value).toLocaleString();
 const fmtScore = value => value == null ? '—' : Number(value).toFixed(1);
@@ -21,6 +33,37 @@ const fmtDate = date => date ? new Intl.DateTimeFormat('en', { month: 'short', d
 function estimateLabel(estimate) {
   if (!estimate) return null;
   return estimate.best === estimate.worst ? `est #${estimate.best}` : `est #${estimate.best}–${estimate.worst}`;
+}
+
+function Tooltip({ label, as = 'span', className = '', children, ...props }) {
+  const [tip, setTip] = useState(null);
+  const Tag = as;
+
+  const show = event => {
+    if (typeof window === 'undefined') return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const width = Math.min(330, Math.max(220, window.innerWidth - 28));
+    const half = width / 2;
+    const left = Math.max(half + 14, Math.min(window.innerWidth - half - 14, rect.left + rect.width / 2));
+    const below = rect.top < 120;
+    setTip({ left, top: below ? rect.bottom + 9 : rect.top - 9, below, width });
+  };
+
+  const hide = () => setTip(null);
+  const onMouseEnter = event => { props.onMouseEnter?.(event); show(event); };
+  const onMouseLeave = event => { props.onMouseLeave?.(event); hide(); };
+  const onFocus = event => { props.onFocus?.(event); show(event); };
+  const onBlur = event => { props.onBlur?.(event); hide(); };
+  const tagProps = { ...props, onMouseEnter, onMouseLeave, onFocus, onBlur };
+  if (Tag !== 'button' && Tag !== 'a' && tagProps.tabIndex == null) tagProps.tabIndex = 0;
+
+  return <>
+    <Tag {...tagProps} className={`tip-anchor ${className}`.trim()} aria-label={props['aria-label'] || label}>{children}</Tag>
+    {tip && typeof document !== 'undefined' && createPortal(
+      <div className={`tip-popover ${tip.below ? 'below' : ''}`} role="tooltip" style={{ left: tip.left, top: tip.top, width: tip.width }}>{label}</div>,
+      document.body
+    )}
+  </>;
 }
 
 function providerOffers(model) {
@@ -34,15 +77,16 @@ function sourceHref(sources, key) {
   return sources?.[key]?.url || null;
 }
 
-function SourceLink({ href, children, className = '' }) {
+function SourceLink({ href, children, className = '', tip = '' }) {
   if (!href) return <span className={className}>{children}</span>;
+  if (tip) return <Tooltip as="a" className={className} label={tip} href={href} target="_blank" rel="noreferrer">{children}<span aria-hidden="true">↗</span></Tooltip>;
   return <a className={className} href={href} target="_blank" rel="noreferrer">{children}<span aria-hidden="true">↗</span></a>;
 }
 
 function ProviderMarks({ model }) {
   return <div className="provider-marks" aria-label="Provider availability">
-    {model.providers?.venice && <span className="provider-mark provider-venice" title="Available on Venice">V</span>}
-    {model.providers?.morpheus && <span className="provider-mark provider-morpheus" title="Available on Morpheus">M</span>}
+    {model.providers?.venice && <Tooltip className="provider-mark provider-venice" label="Available through Venice. V marks provider access, not benchmark quality.">V</Tooltip>}
+    {model.providers?.morpheus && <Tooltip className="provider-mark provider-morpheus" label="Available through Morpheus. M marks provider access, not benchmark quality.">M</Tooltip>}
   </div>;
 }
 
@@ -50,9 +94,9 @@ function Price({ model }) {
   const rows = providerOffers(model);
   if (!rows.length) return <span className="muted">—</span>;
   return <div className="price-stack">
-    {rows.map(row => <div className="price-row" key={row.key} title={`${row.name} · USD / 1M tokens · input / output`}>
+    {rows.map(row => <Tooltip as="div" className="price-row" key={row.key} label={`${row.name} price in USD per 1M tokens. Left value is input; right value is output.`}>
       <span>{row.label}</span><b>{fmtPrice(row.input)}</b><i>/</i><b>{fmtPrice(row.output)}</b>
-    </div>)}
+    </Tooltip>)}
   </div>;
 }
 
@@ -62,10 +106,10 @@ function Evidence({ model, sources }) {
   const aa = model.publishedRanks?.artificialAnalysis;
 
   return <div className="evidence-stack">
-    {arena && <SourceLink href={sourceHref(sources, 'arena')} className="evidence-link"><span>Arena</span><b>{arena.rank ? `#${arena.rank}` : arena.score}</b></SourceLink>}
-    {aa && <SourceLink href={sourceHref(sources, 'artificialAnalysis')} className="evidence-link"><span>AA</span><b>{aa.rank ? `#${aa.rank}` : aa.score}</b></SourceLink>}
-    {llm && <SourceLink href={sourceHref(sources, 'llmStats')} className="evidence-link"><span>LLM</span><b>{llm.rank ? `#${llm.rank}` : llm.score}</b></SourceLink>}
-    {!arena && !aa && !llm && <span className="muted">Independent evidence pending</span>}
+    {arena && <SourceLink tip={SOURCE_TIPS.arena} href={sourceHref(sources, 'arena')} className="evidence-link"><span>Arena</span><b>{arena.rank ? `#${arena.rank}` : arena.score}</b></SourceLink>}
+    {aa && <SourceLink tip={SOURCE_TIPS.artificialAnalysis} href={sourceHref(sources, 'artificialAnalysis')} className="evidence-link"><span>AA</span><b>{aa.rank ? `#${aa.rank}` : aa.score}</b></SourceLink>}
+    {llm && <SourceLink tip={SOURCE_TIPS.llmStats} href={sourceHref(sources, 'llmStats')} className="evidence-link"><span>LLM</span><b>{llm.rank ? `#${llm.rank}` : llm.score}</b></SourceLink>}
+    {!arena && !aa && !llm && <Tooltip className="muted" label="No tracked independent aggregate source currently publishes a usable result for this model. It remains pending rather than receiving a fabricated source rank.">Independent evidence pending</Tooltip>}
   </div>;
 }
 
@@ -82,8 +126,8 @@ function RankCell({ model, metric }) {
   const rank = model.metricRanks?.[metric];
   const estimate = model.rankEstimates?.[metric];
   return <div className="rank-cell">
-    <span>{rank ? String(rank).padStart(2, '0') : '—'}</span>
-    {estimate && <small title="Estimate range from available evidence; missing benchmark components remain pending.">{estimateLabel(estimate)}</small>}
+    <Tooltip label="LLM Index rank within the tracked Venice + Morpheus model population for the selected metric. This is our normalized comparative rank, not an external leaderboard rank.">{rank ? String(rank).padStart(2, '0') : '—'}</Tooltip>
+    {estimate && <Tooltip as="small" label="Evidence-based estimate range. Available measurements are extrapolated while missing benchmark components remain explicitly pending; this never replaces a published external rank.">{estimateLabel(estimate)}</Tooltip>}
   </div>;
 }
 
@@ -91,8 +135,8 @@ function ScoreCell({ model, metric }) {
   const score = model.scores?.[metric];
   const coverage = ['overall', 'reasoning', 'coding', 'agent'].includes(metric) ? model.coverage?.[metric] : null;
   return <div className="score-cell">
-    <strong>{fmtScore(score)}</strong>
-    {coverage != null && <span>{coverage}% evidence</span>}
+    <Tooltip as="strong" label="Normalized 0–100 LLM Index score for the selected metric. It is relative to the tracked provider-model population, not a universal benchmark scale.">{fmtScore(score)}</Tooltip>
+    {coverage != null && <Tooltip label="Evidence coverage: the share of this metric's configured weight currently supported by observed measurements. Lower coverage means more uncertainty, not lower capability.">{coverage}% evidence</Tooltip>}
   </div>;
 }
 
@@ -100,11 +144,17 @@ function MetricMini({ model, metric }) {
   const spec = METRICS.find(item => item.key === metric);
   const rank = model.metricRanks?.[metric];
   const estimate = model.rankEstimates?.[metric];
-  return <div className="metric-mini">
+  return <Tooltip as="div" className="metric-mini" label={spec?.help || 'LLM Index metric.'}>
     <span>{spec?.short}</span>
     <strong>{rank ? `#${rank}` : '—'}</strong>
     <small>{estimate ? estimateLabel(estimate) : fmtScore(model.scores?.[metric])}</small>
-  </div>;
+  </Tooltip>;
+}
+
+function provenanceTip(provenance) {
+  if (provenance === 'independent') return 'Independent measurement from a source outside the model vendor. It may still have its own methodology and limitations.';
+  if (provenance === 'vendor-reported') return 'Reported by the model vendor or launch materials. Useful context, but not treated as independently reproduced evidence.';
+  return 'Published task measurement retained on its source-native scale. Check the linked reference for methodology and provenance.';
 }
 
 function Detail({ model, sources }) {
@@ -170,14 +220,14 @@ function Detail({ model, sources }) {
 
       <section>
         <h3>Task measurements</h3>
-        {taskRows.length ? <div className="task-list">{taskRows.map(([label, value, provenance], index) => <div key={`${label}-${index}`}><span>{label}<i className={`provenance provenance-${provenance}`}>{provenance}</i></span><b>{value}%</b></div>)}</div> : <p className="muted">Task-level evidence pending.</p>}
+        {taskRows.length ? <div className="task-list">{taskRows.map(([label, value, provenance], index) => <div key={`${label}-${index}`}><span>{label}<Tooltip as="i" className={`provenance provenance-${provenance}`} label={provenanceTip(provenance)}>{provenance}</Tooltip></span><b>{value}%</b></div>)}</div> : <p className="muted">Task-level evidence pending.</p>}
       </section>
     </div>
 
     <div className="reference-block">
       <h3>References</h3>
       <div className="reference-links">
-        {refs.map(ref => <SourceLink key={ref.key} href={ref.url} className="reference-link"><small>{ref.kind || 'source'}</small><b>{ref.label}</b></SourceLink>)}
+        {refs.map(ref => <SourceLink key={ref.key} href={ref.url} className="reference-link" tip={`${ref.kind || 'Source'} reference for ${model.name}. Opens the original source so the displayed claim can be checked directly.`}><small>{ref.kind || 'source'}</small><b>{ref.label}</b></SourceLink>)}
       </div>
     </div>
   </div>;
@@ -251,7 +301,7 @@ export default function Home() {
       </div>
       <div className="header-meta">
         <span>{counts.total} text models</span>
-        <span>snapshot {data.updated || '—'}</span>
+        <Tooltip label="Date of the current research snapshot. Provider catalogs may be live when API credentials are configured; benchmark evidence is independently timestamped in the data layer.">snapshot {data.updated || '—'}</Tooltip>
       </div>
     </header>
 
@@ -267,20 +317,29 @@ export default function Home() {
     </section>
 
     <section className="source-rail shell" aria-label="Primary data sources">
-      <span>SOURCES</span>
-      <div>{coreSources.map(([key, label]) => <SourceLink key={key} href={sourceHref(data.sources, key)}>{label}</SourceLink>)}</div>
+      <Tooltip label="Primary provider and benchmark references used by the index. Hover or focus any source to see how it is used.">SOURCES</Tooltip>
+      <div>{coreSources.map(([key, label]) => <SourceLink key={key} tip={SOURCE_TIPS[key]} href={sourceHref(data.sources, key)}>{label}</SourceLink>)}</div>
     </section>
 
     <section className="rank-surface shell">
       <div className="metric-rail" role="tablist" aria-label="Ranking metric">
-        {METRICS.map(item => <button key={item.key} className={metric === item.key ? 'active' : ''} onClick={() => { setMetric(item.key); setExpanded(null); }} type="button">
+        {METRICS.map(item => <Tooltip as="button" label={item.help} key={item.key} className={metric === item.key ? 'active' : ''} onClick={() => { setMetric(item.key); setExpanded(null); }} type="button">
           <span>{item.short}</span><b>{item.label}</b>
-        </button>)}
+        </Tooltip>)}
       </div>
 
       <div className="metric-context">
         <div><span>RANKING BY</span><strong>{activeMetric.label}</strong></div>
         <p>{activeMetric.description}</p>
+      </div>
+
+      <div className="legend-strip" aria-label="How to read the index">
+        <Tooltip className="legend-item" label="Acid/lime numbers are LLM Index ranks: our site-owned relative ordering inside the tracked Venice + Morpheus population."><i className="legend-swatch rank" />Rank</Tooltip>
+        <Tooltip className="legend-item" label="Cyan numbers are normalized LLM Index scores on a 0–100 relative scale for the selected metric."><i className="legend-swatch score" />Score</Tooltip>
+        <Tooltip className="legend-item" label="Amber text marks an evidence-based estimate range when enough evidence exists to extrapolate but some configured measurements are still missing."><i className="legend-swatch estimate" />Estimate</Tooltip>
+        <Tooltip className="legend-item" label="Outlined source chips are external published evidence. Their native ranks/scores are preserved and never presented as our site rank."><i className="legend-swatch evidence" />Published evidence</Tooltip>
+        <Tooltip className="legend-item" label="V means Venice availability; M means Morpheus availability. Provider access is separate from capability ranking."><i className="legend-swatch access" />V / M access</Tooltip>
+        <span className="legend-hint">Hover or focus <b>?</b> concepts anywhere</span>
       </div>
 
       <div className="toolbar">
@@ -297,31 +356,31 @@ export default function Home() {
       {!loading && !error && <div className="table-wrap">
         <table className="rank-table">
           <thead><tr>
-            <th className="col-rank">Rank</th>
-            <th>Model</th>
-            <th className="col-score">{activeMetric.label}</th>
-            <th>Published evidence</th>
-            <th className="col-access">Access</th>
-            <th className="col-price">Price <small>in / out</small></th>
-            <th className="col-context">Context</th>
+            <th className="col-rank"><Tooltip label="Our relative rank for the selected metric among text models currently tracked from Venice and/or Morpheus.">Rank <i className="help-dot">?</i></Tooltip></th>
+            <th><Tooltip label="Canonical model name and organization. Click any row to expand its model facts, benchmark evidence and references.">Model <i className="help-dot">?</i></Tooltip></th>
+            <th className="col-score"><Tooltip label="Normalized 0–100 score for the active metric. This score determines the site rank; it is not a raw external benchmark score.">{activeMetric.label} <i className="help-dot">?</i></Tooltip></th>
+            <th><Tooltip label="Source-native results from tracked independent leaderboards. These are evidence inputs and remain distinct from the LLM Index rank.">Published evidence <i className="help-dot">?</i></Tooltip></th>
+            <th className="col-access"><Tooltip label="Provider availability. V = Venice; M = Morpheus. A model can appear on one or both providers.">Access <i className="help-dot">?</i></Tooltip></th>
+            <th className="col-price"><Tooltip label="Provider token pricing in USD per 1M tokens. Each row is input / output; V and M identify the provider.">Price <small>in / out</small> <i className="help-dot">?</i></Tooltip></th>
+            <th className="col-context"><Tooltip label="Published context-window capacity. K = thousand tokens; M = million tokens. Context size is ranked separately from model capability.">Context <i className="help-dot">?</i></Tooltip></th>
             <th className="col-open" aria-label="Details" />
           </tr></thead>
           <tbody>
             {models.map(model => {
               const isOpen = expanded === model.id;
-              return <>
-                <tr key={model.id} className={isOpen ? 'model-row open' : 'model-row'} onClick={() => setExpanded(isOpen ? null : model.id)}>
+              return <Fragment key={model.id}>
+                <tr className={isOpen ? 'model-row open' : 'model-row'} onClick={() => setExpanded(isOpen ? null : model.id)}>
                   <td><RankCell model={model} metric={metric} /></td>
                   <td className="model-cell"><strong>{model.name}</strong><span>{model.organization}</span></td>
                   <td><ScoreCell model={model} metric={metric} /></td>
                   <td><Evidence model={model} sources={data.sources} /></td>
                   <td><ProviderMarks model={model} /></td>
                   <td><Price model={model} /></td>
-                  <td className="context-cell"><b>{fmtContext(model.context)}</b></td>
+                  <td className="context-cell"><Tooltip as="b" label="Published context-window size for this model. This is informational unless Context is the selected ranking metric.">{fmtContext(model.context)}</Tooltip></td>
                   <td className="open-cell"><button type="button" aria-label={`${isOpen ? 'Close' : 'Open'} ${model.name} details`} onClick={event => { event.stopPropagation(); setExpanded(isOpen ? null : model.id); }}>{isOpen ? '−' : '+'}</button></td>
                 </tr>
-                {isOpen && <tr key={`${model.id}-detail`} className="detail-row"><td colSpan="8"><Detail model={model} sources={data.sources} /></td></tr>}
-              </>;
+                {isOpen && <tr className="detail-row"><td colSpan="8"><Detail model={model} sources={data.sources} /></td></tr>}
+              </Fragment>;
             })}
           </tbody>
         </table>
@@ -342,6 +401,13 @@ export default function Home() {
       </div>
     </section>
 
-    <footer className="footer shell"><strong>LLM INDEX</strong><span>Source-first text model intelligence for Venice + Morpheus.</span><SourceLink href="https://github.com/bitwikiorg/llm-rankings">GitHub</SourceLink></footer>
+    <footer className="footer shell">
+      <div className="footer-brand"><strong>Made by BITwiki</strong><span>LLM INDEX · standalone model intelligence for the BITwiki ecosystem.</span></div>
+      <nav className="footer-links" aria-label="BITwiki ecosystem">
+        <SourceLink href="https://bitwiki.org/">BITwiki</SourceLink>
+        <SourceLink href="https://hub.bitwiki.org/">Visit BIThub</SourceLink>
+        <SourceLink href="https://github.com/bitwikiorg/llm-rankings">GitHub</SourceLink>
+      </nav>
+    </footer>
   </main>;
 }
