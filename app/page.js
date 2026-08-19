@@ -2,26 +2,11 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
-const fmt = n => n == null ? '—' : Number(n).toLocaleString();
-const fmt1 = n => n == null ? '—' : Number(n).toFixed(1);
-const fmtContext = n => n == null ? '—' : n >= 1_000_000 ? `${(n / 1_000_000).toFixed(n % 1_000_000 ? 1 : 0)}M` : `${Math.round(n / 1000)}K`;
-const fmtPrice = n => n == null ? '—' : `$${Number(n).toFixed(Number(n) < 1 ? 2 : 2)}`;
+const fmt = value => value == null ? '—' : Number(value).toLocaleString();
+const fmt1 = value => value == null ? '—' : Number(value).toFixed(1);
+const fmtContext = value => value == null ? '—' : value >= 1_000_000 ? `${(value / 1_000_000).toFixed(value % 1_000_000 ? 1 : 0)}M` : `${Math.round(value / 1000)}K`;
+const fmtPrice = value => value == null ? '—' : `$${Number(value).toFixed(2)}`;
 const fmtDate = date => date ? new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(`${date}T00:00:00Z`)) : 'Unknown';
-const TIER = {
-  S: { name: 'S', label: 'Arena top 10' },
-  A: { name: 'A', label: 'Arena top 25' },
-  B: { name: 'B', label: 'Arena top 50' },
-  C: { name: 'C', label: 'Arena top 100' },
-  D: { name: 'D', label: 'Arena ranked' },
-  U: { name: 'U', label: 'Not evaluated by Arena' },
-};
-
-function daysOld(date) {
-  if (!date) return null;
-  const ms = Date.now() - new Date(`${date}T00:00:00Z`).getTime();
-  if (!Number.isFinite(ms)) return null;
-  return Math.max(0, Math.floor(ms / 86400000));
-}
 
 function offers(model) {
   return [
@@ -35,119 +20,87 @@ function bestInput(model) {
   return values.length ? Math.min(...values) : null;
 }
 
-function ProviderPills({ model, status }) {
-  return <div className="providerPills">
-    {model.providers?.venice && <span className="provider venice" title="Available through Venice">Venice{status?.venice?.live ? ' •' : ''}</span>}
-    {model.providers?.morpheus && <span className="provider morpheus" title="Available through Morpheus">Morpheus{status?.morpheus?.live ? ' •' : ''}</span>}
+function daysOld(date) {
+  if (!date) return null;
+  const value = Date.now() - new Date(`${date}T00:00:00Z`).getTime();
+  return Number.isFinite(value) ? Math.max(0, Math.floor(value / 86400000)) : null;
+}
+
+function ProviderPills({ model }) {
+  return <div className="r-providers">
+    {model.providers?.venice && <span className="r-provider r-provider-venice">Venice</span>}
+    {model.providers?.morpheus && <span className="r-provider r-provider-morpheus">Morpheus</span>}
   </div>;
 }
 
-function TierBadge({ model }) {
-  const tier = model.ranking?.tier || 'U';
-  return <span className={`tier tier-${tier}`} title={TIER[tier]?.label}>{tier}</span>;
+function Grade({ model }) {
+  const tier = model.ranking?.tier;
+  if (!tier) return <span className="r-state r-state-pending">Pending</span>;
+  const aggregate = model.ranking?.tierBasis === 'aggregate';
+  return <span className={`r-grade r-grade-${tier}`} title={aggregate ? 'Grade inferred from the fallback aggregate; not an Arena tier.' : 'Grade derived from Arena Overall rank.'}>{aggregate && <i>β</i>}{tier}</span>;
 }
 
-function PriceCell({ model, compact = false }) {
+function RankMark({ model }) {
+  if (model.rank) return <div className="r-rank"><strong>#{model.rank}</strong><span>Arena</span></div>;
+  if (model.fallbackRank) return <div className="r-rank r-rank-beta"><strong>β{model.fallbackRank}</strong><span>Aggregate</span></div>;
+  return <div className="r-rank r-rank-pending"><strong>—</strong><span>Pending</span></div>;
+}
+
+function PrimarySignal({ model }) {
+  if (model.rank) return <div className="r-primary"><strong>{model.benchmarks?.arena?.score ?? '—'}</strong><span>Arena score · #{model.rank}</span></div>;
+  if (model.ranking?.aggregate != null) return <div className="r-primary r-primary-beta"><strong>{fmt1(model.ranking.aggregate)}</strong><span>β aggregate · {model.ranking.confidence} confidence</span></div>;
+  return <div className="r-primary r-primary-pending"><strong>Pending</strong><span>No independent overall score yet</span></div>;
+}
+
+function PriceCell({ model }) {
   const rows = offers(model);
-  if (!rows.length) return <span className="missing" title="No provider price recorded">Not listed</span>;
-  return <div className={`priceCell ${compact ? 'compact' : ''}`}>
-    {rows.map(row => <div key={row.key} className="priceLine">
-      <span className={`providerMini ${row.key}`}>{row.label}</span>
-      <span>{fmtPrice(row.input)}</span><i>/</i><span>{fmtPrice(row.output)}</span>
-    </div>)}
-  </div>;
+  if (!rows.length) return <span className="r-muted">Not listed</span>;
+  return <div className="r-price-list">{rows.map(row => <div className="r-price" key={row.key}>
+    <span className={`r-price-provider r-price-${row.key}`}>{row.label}</span>
+    <b>{fmtPrice(row.input)}</b><i>/</i><b>{fmtPrice(row.output)}</b>
+  </div>)}</div>;
 }
 
 function Freshness({ model }) {
   const age = daysOld(model.releaseDate);
-  if (age == null) return <div className="freshness unknown"><span>Unknown release</span></div>;
-  const width = Math.max(4, Math.min(100, 100 - age / 180 * 100));
-  return <div className="freshness" title={`${age} days since release`}>
-    <div><i style={{ width: `${width}%` }} /></div>
-    <span>{age === 0 ? 'today' : `${age}d ago`}</span>
-  </div>;
+  if (age == null) return <span className="r-muted">Release unknown</span>;
+  const width = Math.max(3, Math.min(100, 100 - age / 180 * 100));
+  return <div className="r-fresh" title={`${age} days since release`}><div><i style={{ width: `${width}%` }} /></div><span>{age}d</span></div>;
 }
 
-function SourceLinks({ model, sources }) {
-  const rows = (model.sourceKeys || []).map(key => ({ key, ...sources?.[key] })).filter(row => row.url);
-  if (model.huggingFace) rows.push({ key: 'hf', kind: 'model', label: 'Hugging Face', url: model.huggingFace });
-  return <div className="sourceLinks">{rows.map(row => <a key={row.key} href={row.url} target="_blank" rel="noreferrer"><span>{row.kind || 'source'}</span>{row.label} ↗</a>)}</div>;
+function allSources(model, sourceMap) {
+  const keyed = (model.sourceKeys || []).map(key => ({ key, ...sourceMap?.[key] })).filter(item => item.url);
+  const researched = (model.researchSources || []).map((item, index) => ({ key: `research-${index}`, ...item }));
+  const hf = model.huggingFace ? [{ key: 'hf', label: 'Hugging Face', kind: 'model', url: model.huggingFace }] : [];
+  return [...keyed, ...researched, ...hf].filter((item, index, rows) => rows.findIndex(other => other.url === item.url) === index);
 }
 
-function HeroStat({ eyebrow, value, title, meta, accent }) {
-  return <article className={`heroStat ${accent || ''}`}>
-    <span>{eyebrow}</span>
-    <strong>{value}</strong>
-    <h3>{title}</h3>
-    <p>{meta}</p>
-  </article>;
-}
-
-function ModelSpotlight({ model, status, onCompare, selected }) {
-  const arena = model.benchmarks?.arena;
-  return <article className="spotlightCard">
-    <div className="spotlightTop"><div><TierBadge model={model} /><span className="arenaRank">#{arena?.rank || '—'}</span></div><button className={selected ? 'compareAdd active' : 'compareAdd'} onClick={() => onCompare(model.id)} aria-label={`Compare ${model.name}`}>{selected ? '✓' : '+'}</button></div>
-    <h3>{model.name}</h3>
-    <p>{model.organization}</p>
-    <ProviderPills model={model} status={status} />
-    <div className="spotlightScore"><strong>{arena?.score || '—'}</strong><span>Arena score</span></div>
-    <div className="spotlightMeta"><span>{fmtContext(model.context)} ctx</span><span>{fmtDate(model.releaseDate)}</span></div>
-  </article>;
-}
-
-function ArenaBars({ models }) {
-  const rows = [...models].filter(m => m.benchmarks?.arena?.score).sort((a, b) => a.benchmarks.arena.rank - b.benchmarks.arena.rank).slice(0, 12);
-  if (!rows.length) return <div className="emptyViz">No Arena observations.</div>;
-  const min = Math.min(...rows.map(m => m.benchmarks.arena.score)) - 8;
-  const max = Math.max(...rows.map(m => m.benchmarks.arena.score));
-  return <div className="barChart">
-    {rows.map(model => {
-      const score = model.benchmarks.arena.score;
-      const width = 30 + ((score - min) / Math.max(1, max - min)) * 70;
-      const cls = model.provider === 'both' ? 'both' : model.provider;
-      return <div className="barRow" key={model.id}>
-        <div className="barLabel"><span>#{model.benchmarks.arena.rank}</span><b>{model.name}</b></div>
-        <div className="barTrack"><i className={cls} style={{ width: `${width}%` }} /><strong>{score}</strong></div>
-      </div>;
-    })}
-  </div>;
-}
-
-function PriceScatter({ models }) {
-  const rows = models.filter(model => model.benchmarks?.arena?.score && bestInput(model) != null).slice(0, 36);
-  if (rows.length < 3) return <div className="emptyViz">Not enough priced Arena models.</div>;
-  const xs = rows.map(model => Math.log10(bestInput(model) + 0.05));
-  const ys = rows.map(model => model.benchmarks.arena.score);
-  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys) - 4, maxY = Math.max(...ys) + 4;
-  const sx = value => 48 + ((value - minX) / Math.max(.001, maxX - minX)) * 560;
-  const sy = value => 248 - ((value - minY) / Math.max(1, maxY - minY)) * 200;
-  return <div className="scatterWrap">
-    <svg viewBox="0 0 650 285" role="img" aria-label="Arena score versus lowest provider input price">
-      {[0, 1, 2, 3].map(n => <line key={n} x1="48" x2="610" y1={48 + n * 62} y2={48 + n * 62} className="grid" />)}
-      <text x="48" y="275" className="axis">LOWEST INPUT PRICE / 1M →</text>
-      <text x="8" y="22" className="axis">ARENA ↑</text>
-      {rows.map((model, index) => <g key={model.id} className={`dot dot-${model.provider}`}>
-        <circle cx={sx(Math.log10(bestInput(model) + 0.05))} cy={sy(model.benchmarks.arena.score)} r={index < 8 ? 6 : 4} />
-        {index < 7 && <text x={sx(Math.log10(bestInput(model) + 0.05)) + 8} y={sy(model.benchmarks.arena.score) - 7}>{model.name.length > 18 ? `${model.name.slice(0, 17)}…` : model.name}</text>}
-      </g>)}
-    </svg>
+function Evidence({ model }) {
+  const b = model.benchmarks || {};
+  return <div className="r-evidence">
+    <span className={b.arena?.score != null ? 'on' : ''}>Arena</span>
+    <span className={b.artificialAnalysis?.intelligence != null ? 'on' : ''}>AA</span>
+    <span className={b.llmStats?.overall != null ? 'on' : ''}>LLM Stats</span>
+    <small>{model.ranking?.confidence || 'none'}</small>
   </div>;
 }
 
 function DetailPanel({ model, sources }) {
   const b = model.benchmarks || {};
-  return <div className="detailPanel">
-    <div className="detailTop">
-      <div><span className="detailLabel">Benchmark evidence</span><div className="metricChips">
-        <span><b>Arena</b>{b.arena?.score ? `${b.arena.score} · #${b.arena.rank}` : 'Not evaluated'}</span>
-        <span><b>AA Intelligence</b>{b.artificialAnalysis?.intelligence ?? 'Not evaluated'}</span>
-        <span><b>LLM Stats</b>{b.llmStats?.overall ?? 'Not evaluated'}</span>
-        <span><b>Kilo coding</b>{b.kilo?.completion != null ? `${b.kilo.completion}%` : 'Not evaluated'}</span>
-        <span><b>Consensus β</b>{model.ranking?.consensus ?? 'Insufficient evidence'}</span>
-      </div></div>
-      <div><span className="detailLabel">Freshness</span><Freshness model={model} /></div>
+  const refs = allSources(model, sources);
+  return <div className="r-detail">
+    <div className="r-detail-head">
+      <div><span>Evaluation state</span><strong>{model.evaluationState || model.ranking?.basis}</strong></div>
+      <div><span>Ranking basis</span><strong>{model.ranking?.basis}</strong><small>{model.ranking?.tierBasis === 'aggregate' ? 'β grade is derived from available independent sources, not Arena.' : model.rank ? 'Grade follows Arena rank band.' : 'No grade until evidence exists.'}</small></div>
     </div>
-    <div className="specGrid">
+    <div className="r-benchmark-grid">
+      <div><span>Arena Overall</span><b>{b.arena?.score != null ? `${b.arena.score}${b.arena.rank ? ` · #${b.arena.rank}` : ''}` : 'Not evaluated'}</b><small>{b.arena?.votes ? `${fmt(b.arena.votes)} votes` : b.arena?.spread || ''}</small></div>
+      <div><span>Artificial Analysis</span><b>{b.artificialAnalysis?.intelligence ?? 'Not evaluated'}</b><small>{b.artificialAnalysis?.variant || 'Intelligence Index'}</small></div>
+      <div><span>LLM Stats</span><b>{b.llmStats?.overall ?? 'Not evaluated'}</b><small>{b.llmStats ? `R ${b.llmStats.reasoning ?? '—'} · C ${b.llmStats.coding ?? '—'} · A ${b.llmStats.agent ?? '—'}` : ''}</small></div>
+      <div><span>Kilo coding</span><b>{b.kilo?.completion != null ? `${b.kilo.completion}%` : 'Not evaluated'}</b><small>{b.kilo?.costPerAttempt != null ? `${fmtPrice(b.kilo.costPerAttempt)} / attempt` : ''}</small></div>
+      <div><span>Fallback aggregate</span><b>{model.ranking?.aggregate != null ? fmt1(model.ranking.aggregate) : 'Insufficient evidence'}</b><small>{model.ranking?.sourceCount || 0}/3 overall source families · {model.ranking?.confidence} confidence</small></div>
+    </div>
+    <div className="r-spec-grid">
       <div><span>Context</span><b>{fmtContext(model.context)}</b></div>
       <div><span>Parameters</span><b>{model.paramsTotalB ? `${model.paramsTotalB}B` : 'Unknown'}</b><small>{model.paramsActiveB ? `${model.paramsActiveB}B active` : ''}</small></div>
       <div><span>Precision</span><b>{model.quantization || 'Not published'}</b></div>
@@ -155,39 +108,38 @@ function DetailPanel({ model, sources }) {
       <div><span>Released</span><b>{fmtDate(model.releaseDate)}</b></div>
       <div><span>Capabilities</span><b>{(model.capabilities || []).join(' · ') || 'Unknown'}</b></div>
     </div>
-    <div className="providerDetails"><div><span className="detailLabel">Provider pricing · USD / 1M tokens · input / output</span><PriceCell model={model} /></div><div><span className="detailLabel">References</span><SourceLinks model={model} sources={sources} /></div></div>
+    <div className="r-detail-bottom">
+      <div><span className="r-detail-label">Provider price · input / output · USD / 1M tokens</span><PriceCell model={model} /></div>
+      <div><span className="r-detail-label">References</span><div className="r-sources">{refs.map(ref => <a href={ref.url} key={ref.key} target="_blank" rel="noreferrer"><small>{ref.kind || 'source'}</small>{ref.label} ↗</a>)}</div></div>
+    </div>
   </div>;
 }
 
-function metricFor(model, view) {
-  if (view === 'arena') return model.benchmarks?.arena?.score ?? null;
-  if (view === 'intelligence') return model.benchmarks?.artificialAnalysis?.intelligence ?? null;
-  if (view === 'coding') return model.benchmarks?.kilo?.completion ?? model.benchmarks?.llmStats?.coding ?? null;
-  if (view === 'price') return bestInput(model);
-  if (view === 'newest') return model.releaseDate ? new Date(`${model.releaseDate}T00:00:00Z`).getTime() : null;
-  return null;
+function ArenaChart({ models }) {
+  const rows = models.filter(model => model.rank && model.benchmarks?.arena?.score != null).slice(0, 12);
+  if (!rows.length) return null;
+  const min = Math.min(...rows.map(model => model.benchmarks.arena.score)) - 5;
+  const max = Math.max(...rows.map(model => model.benchmarks.arena.score));
+  return <div className="r-bars">{rows.map(model => {
+    const width = 24 + ((model.benchmarks.arena.score - min) / Math.max(1, max - min)) * 76;
+    return <div className="r-bar-row" key={model.id}><span>#{model.rank}</span><b>{model.name}</b><div><i className={`r-bar-${model.provider}`} style={{ width: `${width}%` }} /><strong>{model.benchmarks.arena.score}</strong></div></div>;
+  })}</div>;
 }
 
-function MetricCell({ model, view }) {
-  if (view === 'arena') return <div className="primaryMetric"><strong>{model.benchmarks?.arena?.score ?? '—'}</strong><span>{model.benchmarks?.arena?.rank ? `Arena #${model.benchmarks.arena.rank}` : 'Not evaluated'}</span></div>;
-  if (view === 'intelligence') return <div className="primaryMetric"><strong>{model.benchmarks?.artificialAnalysis?.intelligence ?? '—'}</strong><span>AA Intelligence</span></div>;
-  if (view === 'coding') {
-    const kilo = model.benchmarks?.kilo?.completion;
-    const llm = model.benchmarks?.llmStats?.coding;
-    return <div className="primaryMetric"><strong>{kilo != null ? `${kilo}%` : llm ?? '—'}</strong><span>{kilo != null ? 'Kilo completion' : llm != null ? 'LLM Stats coding' : 'Not evaluated'}</span></div>;
-  }
-  if (view === 'price') return <PriceCell model={model} compact />;
-  return <div className="primaryMetric"><strong>{fmtDate(model.releaseDate)}</strong><span>{daysOld(model.releaseDate) == null ? 'Release unknown' : `${daysOld(model.releaseDate)}d ago`}</span></div>;
+function AggregateChart({ models }) {
+  const rows = models.filter(model => !model.rank && model.ranking?.aggregate != null).slice(0, 10);
+  if (!rows.length) return <div className="r-empty">No fallback aggregates.</div>;
+  return <div className="r-bars">{rows.map(model => <div className="r-bar-row" key={model.id}><span>β{model.fallbackRank}</span><b>{model.name}</b><div><i className="r-bar-beta" style={{ width: `${Math.max(4, model.ranking.aggregate)}%` }} /><strong>{fmt1(model.ranking.aggregate)}</strong></div></div>)}</div>;
 }
 
-function MobileModelCard({ model, view, status, selected, onCompare, onExpand, expanded, sources }) {
-  return <article className="mobileModelCard">
-    <button className="mobileCardMain" onClick={onExpand}>
-      <div className="mobileRank"><TierBadge model={model} /><span>{model.benchmarks?.arena?.rank ? `#${model.benchmarks.arena.rank}` : '—'}</span></div>
-      <div className="mobileIdentity"><h3>{model.name}</h3><p>{model.organization}</p><ProviderPills model={model} status={status} /></div>
-      <MetricCell model={model} view={view} />
+function MobileCard({ model, selected, onCompare, onExpand, expanded, sources }) {
+  return <article className="r-mobile-card">
+    <button className="r-mobile-main" onClick={onExpand}>
+      <div className="r-mobile-rank"><RankMark model={model} /><Grade model={model} /></div>
+      <div className="r-mobile-name"><strong>{model.name}</strong><span>{model.organization}</span><ProviderPills model={model} /></div>
+      <PrimarySignal model={model} />
     </button>
-    <div className="mobileCardMeta"><span>{fmtContext(model.context)} context</span><span>{fmtDate(model.releaseDate)}</span><button className={selected ? 'compareAdd active' : 'compareAdd'} onClick={() => onCompare(model.id)}>{selected ? '✓' : '+'}</button></div>
+    <div className="r-mobile-meta"><span>{fmtContext(model.context)} ctx</span><span>{fmtDate(model.releaseDate)}</span><button className={selected ? 'r-compare active' : 'r-compare'} onClick={() => onCompare(model.id)}>{selected ? '✓' : '+'}</button></div>
     {expanded && <DetailPanel model={model} sources={sources} />}
   </article>;
 }
@@ -197,20 +149,21 @@ export default function Home() {
   const [query, setQuery] = useState('');
   const [provider, setProvider] = useState('all');
   const [license, setLicense] = useState('all');
-  const [view, setView] = useState('arena');
+  const [sort, setSort] = useState('primary');
   const [expanded, setExpanded] = useState(null);
   const [compare, setCompare] = useState([]);
 
   useEffect(() => {
-    fetch('/api/models').then(r => r.json()).then(setData).catch(() => setData(current => ({ ...current, error: true })));
+    fetch('/api/models').then(response => response.json()).then(setData).catch(() => setData(current => ({ ...current, error: true })));
   }, []);
 
   const models = data.models || [];
-  const arenaModels = useMemo(() => models.filter(m => m.benchmarks?.arena?.rank).sort((a, b) => a.benchmarks.arena.rank - b.benchmarks.arena.rank), [models]);
+  const arenaModels = useMemo(() => models.filter(model => model.rank).sort((a, b) => a.rank - b.rank), [models]);
+  const fallbackModels = useMemo(() => models.filter(model => !model.rank && model.fallbackRank).sort((a, b) => a.fallbackRank - b.fallbackRank), [models]);
   const arenaLeader = arenaModels[0];
-  const intelligenceLeader = useMemo(() => [...models].filter(m => m.benchmarks?.artificialAnalysis?.intelligence != null).sort((a, b) => b.benchmarks.artificialAnalysis.intelligence - a.benchmarks.artificialAnalysis.intelligence)[0], [models]);
-  const openLeader = useMemo(() => arenaModels.find(m => String(m.openness).toLowerCase().includes('open')), [arenaModels]);
-  const overlap = models.filter(m => m.providers?.venice && m.providers?.morpheus).length;
+  const fallbackLeader = fallbackModels[0];
+  const openLeader = arenaModels.find(model => String(model.openness || '').toLowerCase().includes('open'));
+  const overlap = models.filter(model => model.providers?.venice && model.providers?.morpheus).length;
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -219,135 +172,85 @@ export default function Home() {
       if (provider === 'venice' && !model.providers?.venice) return false;
       if (provider === 'morpheus' && !model.providers?.morpheus) return false;
       if (provider === 'both' && !(model.providers?.venice && model.providers?.morpheus)) return false;
-      if (license === 'open' && !String(model.openness).toLowerCase().includes('open')) return false;
-      if (license === 'closed' && String(model.openness).toLowerCase().includes('open')) return false;
+      const open = String(model.openness || model.license || '').toLowerCase().includes('open') || String(model.license || '').toLowerCase().includes('apache') || String(model.license || '').toLowerCase().includes('mit');
+      if (license === 'open' && !open) return false;
+      if (license === 'closed' && open) return false;
       return true;
     });
-    return rows.sort((a, b) => {
-      if (view === 'arena') return (a.benchmarks?.arena?.rank || 9999) - (b.benchmarks?.arena?.rank || 9999);
-      if (view === 'price') return (metricFor(a, view) ?? 9999) - (metricFor(b, view) ?? 9999);
-      return (metricFor(b, view) ?? -Infinity) - (metricFor(a, view) ?? -Infinity);
+
+    return [...rows].sort((a, b) => {
+      if (sort === 'aggregate') return (b.ranking?.aggregate ?? -1) - (a.ranking?.aggregate ?? -1);
+      if (sort === 'intelligence') return (b.benchmarks?.artificialAnalysis?.intelligence ?? -1) - (a.benchmarks?.artificialAnalysis?.intelligence ?? -1);
+      if (sort === 'coding') return (b.benchmarks?.kilo?.completion ?? b.benchmarks?.llmStats?.coding ?? -1) - (a.benchmarks?.kilo?.completion ?? a.benchmarks?.llmStats?.coding ?? -1);
+      if (sort === 'price') return (bestInput(a) ?? Number.MAX_VALUE) - (bestInput(b) ?? Number.MAX_VALUE);
+      if (sort === 'newest') return (b.releaseDate ? new Date(`${b.releaseDate}T00:00:00Z`).getTime() : 0) - (a.releaseDate ? new Date(`${a.releaseDate}T00:00:00Z`).getTime() : 0);
+      if (a.rank && b.rank) return a.rank - b.rank;
+      if (a.rank) return -1;
+      if (b.rank) return 1;
+      if (a.fallbackRank && b.fallbackRank) return a.fallbackRank - b.fallbackRank;
+      if (a.fallbackRank) return -1;
+      if (b.fallbackRank) return 1;
+      return a.name.localeCompare(b.name);
     });
-  }, [models, query, provider, license, view]);
+  }, [models, query, provider, license, sort]);
 
-  const toggleCompare = id => setCompare(current => current.includes(id) ? current.filter(x => x !== id) : current.length < 4 ? [...current, id] : current);
-  const compareModels = compare.map(id => models.find(m => m.id === id)).filter(Boolean);
-  const views = [
-    ['arena', 'Arena Overall'], ['intelligence', 'AA Intelligence'], ['coding', 'Coding'], ['price', 'Price'], ['newest', 'Newest'],
-  ];
+  const compared = compare.map(id => models.find(model => model.id === id)).filter(Boolean);
+  const toggleCompare = id => setCompare(current => current.includes(id) ? current.filter(item => item !== id) : current.length < 4 ? [...current, id] : current);
 
-  return <main>
-    <header className="topbar">
-      <a className="brand" href="#top"><i />LLM INDEX</a>
-      <nav><a href="#leaders">Leaders</a><a href="#analysis">Analysis</a><a href="#rankings">Rankings</a><a href="#compare">Compare</a></nav>
-      <a className="methodLink" href="/methodology">Methodology</a>
-    </header>
+  return <main className="r-app">
+    <header className="r-topbar"><a className="r-brand" href="/"><i />LLM INDEX</a><nav><a href="#rankings">Rankings</a><a href="#analysis">Analysis</a><a href="#compare">Compare</a></nav><a className="r-method" href="/methodology">Methodology ↗</a></header>
 
-    <section id="top" className="hero shell">
-      <div className="heroCopy">
-        <div className="liveLine"><span />TEXT MODELS · VENICE + MORPHEUS · SOURCE-NATIVE RANKS</div>
-        <h1>Models you can<br /><em>actually run.</em></h1>
-        <p>Independent benchmark rankings filtered to text models available through Venice, Morpheus, or both. Provider economics and technical metadata stay separate from benchmark rank.</p>
-        <div className="heroProviders"><span className="veniceSwatch">Venice</span><span className="morpheusSwatch">Morpheus</span><span>{models.length || '—'} models tracked</span><span>{overlap || '—'} available on both</span></div>
-      </div>
-      <div className="heroAside">
-        <div><span>Research checked</span><b>{data.updated || 'Loading…'}</b></div>
-        <div><span>Arena snapshot</span><b>{data.benchmarkSnapshot?.arena?.sourceDate || 'Aug 12, 2026'}</b></div>
-        <div><span>Default ranking</span><b>Arena Overall</b></div>
+    <section className="r-hero r-shell">
+      <div><span className="r-kicker">TEXT MODELS · VENICE + MORPHEUS</span><h1>Rank the evidence.<br/><em>Show the basis.</em></h1><p>Arena Overall is the default source-native rank. When an exact human Arena rank is unavailable, the model receives a clearly marked β fallback from the independent benchmark families that actually have data. No “U” grade. No invented placement.</p></div>
+      <aside><div><span>Provider catalog</span><b>{models.length || '—'} text models</b></div><div><span>Research snapshot</span><b>{data.updated || 'Loading…'}</b></div><div><span>Fallback rule</span><b>Arena → transparent β aggregate</b></div></aside>
+    </section>
+
+    <section className="r-shell r-leaders">
+      <div className="r-section-head"><div><span className="r-kicker">LEADERS</span><h2>Signal first.</h2></div><p>Grades are S/A/B/C/D. Arena grades use source rank bands; β grades are visibly marked as aggregate-derived.</p></div>
+      <div className="r-stat-grid">
+        <article className="r-stat r-stat-purple"><span>Arena leader</span><strong>{arenaLeader?.benchmarks?.arena?.score ?? '—'}</strong><h3>{arenaLeader?.name || 'Loading…'}</h3><p>{arenaLeader ? `Arena #${arenaLeader.rank} · ${fmt(arenaLeader.benchmarks?.arena?.votes)} votes` : ''}</p></article>
+        <article className="r-stat r-stat-cyan"><span>Fallback leader</span><strong>{fallbackLeader?.ranking?.aggregate != null ? fmt1(fallbackLeader.ranking.aggregate) : '—'}</strong><h3>{fallbackLeader?.name || 'No fallback models'}</h3><p>{fallbackLeader ? `β${fallbackLeader.fallbackRank} · ${fallbackLeader.ranking.confidence} confidence · ${fallbackLeader.ranking.sourceCount}/3 sources` : ''}</p></article>
+        <article className="r-stat r-stat-green"><span>Open-weight Arena leader</span><strong>{openLeader ? `#${openLeader.rank}` : '—'}</strong><h3>{openLeader?.name || '—'}</h3><p>{openLeader?.license || openLeader?.openness || ''}</p></article>
+        <article className="r-stat"><span>Provider overlap</span><strong>{overlap || '—'}</strong><h3>Venice + Morpheus</h3><p>Explicit shared catalog entries.</p></article>
       </div>
     </section>
 
-    <section id="leaders" className="shell leadersSection">
-      <div className="sectionHeading"><div><span className="eyebrow">CURRENT SIGNAL</span><h2>At a glance</h2></div><p>No invented “overall intelligence” headline. Each card names its source.</p></div>
-      <div className="heroStats">
-        <HeroStat eyebrow="ARENA LEADER" value={arenaLeader?.benchmarks?.arena?.score || '—'} title={arenaLeader?.name || 'Loading'} meta={arenaLeader ? `Global Arena rank #${arenaLeader.benchmarks.arena.rank}` : 'Source: Arena Overall'} accent="purple" />
-        <HeroStat eyebrow="AA INTELLIGENCE" value={intelligenceLeader?.benchmarks?.artificialAnalysis?.intelligence ?? '—'} title={intelligenceLeader?.name || 'Loading'} meta="Artificial Analysis Intelligence Index" accent="blue" />
-        <HeroStat eyebrow="TOP OPEN-WEIGHT" value={openLeader?.benchmarks?.arena?.score || '—'} title={openLeader?.name || 'Loading'} meta={openLeader ? `Arena #${openLeader.benchmarks.arena.rank}` : 'Among provider-available models'} accent="green" />
-        <HeroStat eyebrow="PROVIDER OVERLAP" value={overlap || '—'} title="Available on both" meta="Venice + Morpheus catalog overlap" />
-      </div>
-
-      <div className="spotlightGrid">
-        {arenaModels.slice(0, 6).map(model => <ModelSpotlight key={model.id} model={model} status={data.status} onCompare={toggleCompare} selected={compare.includes(model.id)} />)}
-      </div>
+    <section id="analysis" className="r-shell r-analysis">
+      <div className="r-section-head"><div><span className="r-kicker">VISUAL ANALYSIS</span><h2>Two different ranking regimes.</h2></div><p>Source-native Arena ranks are never silently mixed with fallback aggregate ranks.</p></div>
+      <div className="r-viz-grid"><article className="r-viz"><header><div><span>ARENA OVERALL</span><h3>Top source-ranked models</h3></div><small>score</small></header><ArenaChart models={arenaModels} /></article><article className="r-viz"><header><div><span>β FALLBACK</span><h3>Models awaiting an exact Arena rank</h3></div><small>normalized aggregate</small></header><AggregateChart models={fallbackModels} /></article></div>
     </section>
 
-    <section id="analysis" className="shell analysisSection">
-      <div className="sectionHeading"><div><span className="eyebrow">VISUAL ANALYSIS</span><h2>Frontier, not a word cloud</h2></div><p>Source-native Arena scores and provider pricing. Missing observations stay missing.</p></div>
-      <div className="vizGrid">
-        <article className="vizCard"><div className="vizHead"><div><span>ARENA OVERALL</span><h3>Top provider-available models</h3></div><small>Score · higher is better</small></div><ArenaBars models={models} /></article>
-        <article className="vizCard"><div className="vizHead"><div><span>PRICE FRONTIER</span><h3>Capability vs. lowest input price</h3></div><small>USD / 1M tokens</small></div><PriceScatter models={models} /></article>
+    <section id="rankings" className="r-shell r-rankings">
+      <div className="r-section-head"><div><span className="r-kicker">LEADERBOARD</span><h2>Text model rankings</h2></div><p>{filtered.length} visible · click any row for benchmarks, architecture, pricing and references.</p></div>
+      <div className="r-rule"><b>Primary order:</b> Arena Overall when available. Models without a human Arena rank use <b>β aggregate</b> from available Arena AutoEval / Artificial Analysis / LLM Stats evidence, with source count and confidence shown.</div>
+      <div className="r-controls">
+        <label className="r-search"><span>⌕</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search model, lab, provider ID…" /></label>
+        <div className="r-provider-filter">{['all','venice','morpheus','both'].map(item => <button key={item} onClick={() => setProvider(item)} className={provider === item ? `active ${item}` : item}>{item === 'all' ? 'All' : item[0].toUpperCase() + item.slice(1)}</button>)}</div>
+        <select value={license} onChange={event => setLicense(event.target.value)} aria-label="License filter"><option value="all">All licenses</option><option value="open">Open weights</option><option value="closed">Proprietary</option></select>
+        <select value={sort} onChange={event => setSort(event.target.value)} aria-label="Sort models"><option value="primary">Primary order</option><option value="aggregate">Aggregate</option><option value="intelligence">AA Intelligence</option><option value="coding">Coding</option><option value="price">Lowest input price</option><option value="newest">Newest</option></select>
       </div>
+
+      <div className="r-table-wrap">
+        <table className="r-table">
+          <colgroup><col className="r-col-rank"/><col className="r-col-grade"/><col className="r-col-model"/><col className="r-col-signal"/><col className="r-col-provider"/><col className="r-col-price"/><col className="r-col-release"/><col className="r-col-context"/><col className="r-col-evidence"/><col className="r-col-compare"/></colgroup>
+          <thead><tr><th>Rank</th><th>Grade</th><th>Model</th><th>Primary signal</th><th>Providers</th><th>Price <small>$/1M · in/out</small></th><th>Released</th><th>Context</th><th>Evidence</th><th>+</th></tr></thead>
+          <tbody>{filtered.map(model => <tbody className="r-row-group" key={model.id}>
+            <tr className={expanded === model.id ? 'r-model-row open' : 'r-model-row'} onClick={() => setExpanded(expanded === model.id ? null : model.id)}>
+              <td><RankMark model={model} /></td><td><Grade model={model} /></td><td><div className="r-model"><strong>{model.name}</strong><span>{model.organization}</span><small>{model.openness || model.license || 'Unknown license'}</small></div></td><td><PrimarySignal model={model} /></td><td><ProviderPills model={model} /></td><td><PriceCell model={model} /></td><td><div className="r-release"><strong>{fmtDate(model.releaseDate)}</strong><Freshness model={model} /></div></td><td><strong className="r-context">{fmtContext(model.context)}</strong></td><td><Evidence model={model} /></td><td><button className={compare.includes(model.id) ? 'r-compare active' : 'r-compare'} onClick={event => { event.stopPropagation(); toggleCompare(model.id); }} aria-label={`Compare ${model.name}`}>{compare.includes(model.id) ? '✓' : '+'}</button></td>
+            </tr>
+            {expanded === model.id && <tr className="r-detail-row"><td colSpan="10"><DetailPanel model={model} sources={data.sources} /></td></tr>}
+          </tbody>)}</tbody>
+        </table>
+      </div>
+
+      <div className="r-mobile-list">{filtered.map(model => <MobileCard key={model.id} model={model} selected={compare.includes(model.id)} onCompare={toggleCompare} onExpand={() => setExpanded(expanded === model.id ? null : model.id)} expanded={expanded === model.id} sources={data.sources} />)}</div>
     </section>
 
-    <section id="rankings" className="shell rankingsSection">
-      <div className="sectionHeading rankingsHeading"><div><span className="eyebrow">LEADERBOARD</span><h2>Compare the field</h2></div><p>{filtered.length} models visible · click a model row for architecture, freshness and references.</p></div>
-
-      <div className="viewTabs" role="tablist" aria-label="Ranking source">
-        {views.map(([key, label]) => <button key={key} className={view === key ? 'active' : ''} onClick={() => setView(key)}>{label}</button>)}
-      </div>
-      <div className="viewNote">
-        {view === 'arena' && <>Arena Overall is the default because it is a source-native human-preference rank across broad text tasks.</>}
-        {view === 'intelligence' && <>Artificial Analysis Intelligence Index is shown independently; model effort variants may differ from provider defaults.</>}
-        {view === 'coding' && <>Kilo completion is preferred when available; otherwise LLM Stats coding is shown.</>}
-        {view === 'price' && <>Sorted by the lowest recorded provider input price. Table prices are <b>USD per 1M tokens, input / output.</b></>}
-        {view === 'newest' && <>Release date is metadata only. It does not alter Arena or consensus rank.</>}
-      </div>
-
-      <div className="filterBar">
-        <label className="searchBox"><span>⌕</span><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search models, labs, provider IDs…" aria-label="Search models" /></label>
-        <div className="providerFilter" aria-label="Provider filter">
-          {[['all','All'],['venice','Venice'],['morpheus','Morpheus'],['both','Both']].map(([key,label]) => <button key={key} onClick={() => setProvider(key)} className={provider === key ? `active ${key}` : key}>{label}</button>)}
-        </div>
-        <select value={license} onChange={e => setLicense(e.target.value)} aria-label="License filter"><option value="all">All licenses</option><option value="open">Open weights</option><option value="closed">Proprietary</option></select>
-      </div>
-
-      <div className="tableShell">
-        <div className="tableScroll">
-          <table className="leaderboardTable">
-            <thead><tr>
-              <th className="rankHead">Arena</th><th>Model</th><th>{view === 'arena' ? 'Score' : view === 'intelligence' ? 'Intelligence' : view === 'coding' ? 'Coding' : view === 'price' ? 'Price' : 'Released'}</th><th>Providers</th><th><button onClick={() => setView('price')}>Price <span>$/1M in / out</span></button></th><th><button onClick={() => setView('newest')}>Released</button></th><th>Context</th><th aria-label="Compare">Compare</th>
-            </tr></thead>
-            <tbody>{filtered.map((model, index) => <>
-              <tr key={model.id} className={expanded === model.id ? 'modelRow open' : 'modelRow'} onClick={() => setExpanded(expanded === model.id ? null : model.id)}>
-                <td className="rankCell"><TierBadge model={model} /><strong>{model.benchmarks?.arena?.rank ? `#${model.benchmarks.arena.rank}` : '—'}</strong></td>
-                <td className="modelCell"><strong>{model.name}</strong><span>{model.organization} · {model.openness || model.license || 'Unknown license'}</span></td>
-                <td><MetricCell model={model} view={view} /></td>
-                <td><ProviderPills model={model} status={data.status} /></td>
-                <td><PriceCell model={model} compact /></td>
-                <td className="releasedCell"><strong>{fmtDate(model.releaseDate)}</strong><Freshness model={model} /></td>
-                <td className="contextCell">{fmtContext(model.context)}</td>
-                <td><button className={compare.includes(model.id) ? 'compareAdd active' : 'compareAdd'} onClick={e => { e.stopPropagation(); toggleCompare(model.id); }}>{compare.includes(model.id) ? '✓' : '+'}</button></td>
-              </tr>
-              {expanded === model.id && <tr key={`${model.id}-detail`} className="detailRow"><td colSpan="8"><DetailPanel model={model} sources={data.sources} /></td></tr>}
-            </>)}</tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="mobileCards">
-        {filtered.map(model => <MobileModelCard key={model.id} model={model} view={view} status={data.status} selected={compare.includes(model.id)} onCompare={toggleCompare} onExpand={() => setExpanded(expanded === model.id ? null : model.id)} expanded={expanded === model.id} sources={data.sources} />)}
-      </div>
-
-      <div className="tierLegend"><span><b className="tier tier-S">S</b>Arena top 10</span><span><b className="tier tier-A">A</b>top 25</span><span><b className="tier tier-B">B</b>top 50</span><span><b className="tier tier-C">C</b>top 100</span><span><b className="tier tier-D">D</b>ranked</span><span><b className="tier tier-U">U</b>not evaluated</span></div>
+    <section id="compare" className="r-shell r-compare-section">
+      <div className="r-section-head"><div><span className="r-kicker">COMPARE</span><h2>{compared.length ? `${compared.length} models selected` : 'Select up to four models'}</h2></div><p>Raw benchmark values stay raw. Provider economics stay provider-specific.</p></div>
+      {compared.length ? <div className="r-compare-grid">{compared.map(model => <article key={model.id}><header><RankMark model={model}/><Grade model={model}/></header><h3>{model.name}</h3><ProviderPills model={model}/><dl><div><dt>Primary</dt><dd>{model.rank ? `Arena #${model.rank}` : model.fallbackRank ? `β${model.fallbackRank} aggregate` : 'Pending'}</dd></div><div><dt>Arena</dt><dd>{model.benchmarks?.arena?.score ?? '—'}</dd></div><div><dt>AA Intelligence</dt><dd>{model.benchmarks?.artificialAnalysis?.intelligence ?? '—'}</dd></div><div><dt>LLM Stats</dt><dd>{model.benchmarks?.llmStats?.overall ?? '—'}</dd></div><div><dt>Kilo coding</dt><dd>{model.benchmarks?.kilo?.completion != null ? `${model.benchmarks.kilo.completion}%` : '—'}</dd></div><div><dt>Aggregate</dt><dd>{fmt1(model.ranking?.aggregate)}</dd></div><div><dt>Context</dt><dd>{fmtContext(model.context)}</dd></div><div><dt>Released</dt><dd>{fmtDate(model.releaseDate)}</dd></div></dl><PriceCell model={model}/></article>)}</div> : <div className="r-compare-empty">Use the <b>+</b> control in the leaderboard. Selection never changes ranking.</div>}
     </section>
 
-    <section id="compare" className="shell compareSection">
-      <div className="sectionHeading"><div><span className="eyebrow">COMPARE</span><h2>{compareModels.length ? `${compareModels.length} selected` : 'Select up to four models'}</h2></div>{compareModels.length > 0 && <button className="clearCompare" onClick={() => setCompare([])}>Clear</button>}</div>
-      {compareModels.length === 0 ? <div className="compareEmpty">Use the + buttons in the leaderboard. Comparison keeps benchmark sources and provider prices distinct.</div> : <div className="compareGrid">{compareModels.map(model => <article className="compareCard" key={model.id}>
-        <div className="compareCardHead"><div><TierBadge model={model} /><h3>{model.name}</h3><p>{model.organization}</p></div><button onClick={() => toggleCompare(model.id)}>×</button></div>
-        <ProviderPills model={model} status={data.status} />
-        <dl><div><dt>Arena</dt><dd>{model.benchmarks?.arena?.score ? `${model.benchmarks.arena.score} · #${model.benchmarks.arena.rank}` : 'Not evaluated'}</dd></div><div><dt>AA Intelligence</dt><dd>{model.benchmarks?.artificialAnalysis?.intelligence ?? '—'}</dd></div><div><dt>LLM Stats</dt><dd>{model.benchmarks?.llmStats?.overall ?? '—'}</dd></div><div><dt>Kilo</dt><dd>{model.benchmarks?.kilo?.completion != null ? `${model.benchmarks.kilo.completion}%` : '—'}</dd></div><div><dt>Context</dt><dd>{fmtContext(model.context)}</dd></div><div><dt>Released</dt><dd>{fmtDate(model.releaseDate)}</dd></div></dl>
-        <PriceCell model={model} />
-      </article>)}</div>}
-    </section>
-
-    <section className="shell provenanceSection">
-      <div className="sectionHeading"><div><span className="eyebrow">PROVENANCE</span><h2>Sources are part of the product</h2></div><p>Arena rank is not replaced by our own score. Experimental consensus appears only as secondary evidence.</p></div>
-      <div className="sourceGrid">{Object.entries(data.sources || {}).slice(0, 12).map(([key, source]) => <a key={key} href={source.url} target="_blank" rel="noreferrer"><span>{source.kind}</span><strong>{source.label}</strong><i>↗</i></a>)}</div>
-    </section>
-
-    {compareModels.length > 0 && <div className="compareDock"><span><b>{compareModels.length}</b> model{compareModels.length > 1 ? 's' : ''} selected</span><a href="#compare">Compare now ↓</a></div>}
-
-    <footer className="footer shell"><div><b>LLM INDEX</b><span>Text-model research across Venice + Morpheus.</span></div><div><a href="/methodology">Methodology</a><a href="https://github.com/bitwikiorg/llm-rankings" target="_blank" rel="noreferrer">GitHub ↗</a></div></footer>
+    <footer className="r-footer r-shell"><div><b>LLM INDEX</b><span>Source-first text-model research across Venice + Morpheus.</span></div><div><a href="/methodology">Methodology</a><a href="https://github.com/bitwikiorg/llm-rankings" target="_blank" rel="noreferrer">GitHub ↗</a></div></footer>
   </main>;
 }
