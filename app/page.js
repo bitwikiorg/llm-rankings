@@ -18,6 +18,11 @@ const fmtContext = value => value == null ? '—' : value >= 1_000_000 ? `${(val
 const fmtPrice = value => value == null ? '—' : Number(value) < 0.1 ? `$${Number(value).toFixed(3)}` : `$${Number(value).toFixed(2)}`;
 const fmtDate = date => date ? new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(`${date}T00:00:00Z`)) : 'Unknown';
 
+function estimateLabel(estimate) {
+  if (!estimate) return null;
+  return estimate.best === estimate.worst ? `est #${estimate.best}` : `est #${estimate.best}–${estimate.worst}`;
+}
+
 function providerOffers(model) {
   return [
     model.prices?.venice && { key: 'venice', label: 'V', name: 'Venice', ...model.prices.venice },
@@ -60,7 +65,7 @@ function Evidence({ model, sources }) {
     {arena && <SourceLink href={sourceHref(sources, 'arena')} className="evidence-link"><span>Arena</span><b>{arena.rank ? `#${arena.rank}` : arena.score}</b></SourceLink>}
     {aa && <SourceLink href={sourceHref(sources, 'artificialAnalysis')} className="evidence-link"><span>AA</span><b>{aa.rank ? `#${aa.rank}` : aa.score}</b></SourceLink>}
     {llm && <SourceLink href={sourceHref(sources, 'llmStats')} className="evidence-link"><span>LLM</span><b>{llm.rank ? `#${llm.rank}` : llm.score}</b></SourceLink>}
-    {!arena && !aa && !llm && <span className="muted">No independent score</span>}
+    {!arena && !aa && !llm && <span className="muted">Independent evidence pending</span>}
   </div>;
 }
 
@@ -71,6 +76,15 @@ function allReferences(model, sources) {
   const research = (model.researchSources || []).map((item, index) => ({ key: `research-${index}`, ...item }));
   const hf = model.huggingFace ? [{ key: 'hf', label: 'Hugging Face', kind: 'model', url: model.huggingFace }] : [];
   return [...sourceKeys, ...research, ...hf].filter((item, index, rows) => item.url && rows.findIndex(other => other.url === item.url) === index);
+}
+
+function RankCell({ model, metric }) {
+  const rank = model.metricRanks?.[metric];
+  const estimate = model.rankEstimates?.[metric];
+  return <div className="rank-cell">
+    <span>{rank ? String(rank).padStart(2, '0') : '—'}</span>
+    {estimate && <small title="Estimate range from available evidence; missing benchmark components remain pending.">{estimateLabel(estimate)}</small>}
+  </div>;
 }
 
 function ScoreCell({ model, metric }) {
@@ -85,10 +99,11 @@ function ScoreCell({ model, metric }) {
 function MetricMini({ model, metric }) {
   const spec = METRICS.find(item => item.key === metric);
   const rank = model.metricRanks?.[metric];
+  const estimate = model.rankEstimates?.[metric];
   return <div className="metric-mini">
     <span>{spec?.short}</span>
     <strong>{rank ? `#${rank}` : '—'}</strong>
-    <small>{fmtScore(model.scores?.[metric])}</small>
+    <small>{estimate ? estimateLabel(estimate) : fmtScore(model.scores?.[metric])}</small>
   </div>;
 }
 
@@ -96,21 +111,38 @@ function Detail({ model, sources }) {
   const refs = allReferences(model, sources);
   const b = model.benchmarks || {};
   const vendor = b.vendor || {};
+  const independent = b.independent || {};
   const taskRows = [
-    ['GPQA', vendor.gpqa],
-    ['Terminal-Bench', vendor.terminalBench],
-    ['SWE-bench Pro', vendor.sweBenchPro],
-    ["Agents' Last Exam", vendor.agentsLastExam],
-    ['AutomationBench', vendor.automationBench],
-    ['OSWorld', vendor.osWorldVerified],
-    ["Humanity's Last Exam", vendor.hle],
-    ['FrontierMath', vendor.frontierMath],
+    ['KingBench 3', independent.kingBench3, 'independent'],
+    ['GPQA', vendor.gpqa, 'published'],
+    ['Terminal-Bench', vendor.terminalBench, 'published'],
+    ['Terminal-Bench 3.0', vendor.terminalBench3, 'vendor-reported'],
+    ['DeepSWE v1.1', vendor.deepSWE, 'vendor-reported'],
+    ['SWE-Marathon v1.1', vendor.sweMarathon, 'vendor-reported'],
+    ['FrontierSWE', vendor.frontierSWE, 'vendor-reported'],
+    ['SWE-bench Pro', vendor.sweBenchPro, 'published'],
+    ["Agents' Last Exam", vendor.agentsLastExam, 'published'],
+    ["Agents' Last Exam CLI", vendor.agentsLastExamCli, 'vendor-reported'],
+    ['AutomationBench', vendor.automationBench, 'published'],
+    ['AutomationBench', vendor.automationBenchReported, 'vendor-reported'],
+    ['OSWorld', vendor.osWorldVerified, 'published'],
+    ["Humanity's Last Exam", vendor.hle, 'published'],
+    ['HLE with Tools', vendor.hleTools, 'vendor-reported'],
+    ['FrontierMath', vendor.frontierMath, 'published'],
+    ['CyberGym', vendor.cyberGym, 'vendor-reported'],
+    ['ExploitBench', vendor.exploitBench, 'vendor-reported'],
   ].filter(([, value]) => value != null);
 
   return <div className="detail-panel">
     <div className="detail-metrics">
       {['overall', 'reasoning', 'coding', 'agent', 'value'].map(metric => <MetricMini key={metric} model={model} metric={metric} />)}
     </div>
+
+    {(model.evidenceSummary || model.estimate) && <div className="model-brief">
+      <div><span>{model.evidenceState === 'independent-partial' ? 'PARTIAL INDEPENDENT EVIDENCE' : 'EVIDENCE NOTE'}</span>{model.estimate?.label && <b>{model.estimate.label}</b>}</div>
+      {model.evidenceSummary && <p>{model.evidenceSummary}</p>}
+      {model.estimate?.basis && <small>Estimate basis: {model.estimate.basis}</small>}
+    </div>}
 
     <div className="detail-grid">
       <section>
@@ -121,6 +153,7 @@ function Detail({ model, sources }) {
           <div><dt>Parameters</dt><dd>{model.paramsTotalB ? `${model.paramsTotalB}B${model.paramsActiveB ? ` · ${model.paramsActiveB}B active` : ''}` : 'Unknown'}</dd></div>
           <div><dt>Precision</dt><dd>{model.quantization || 'Not published'}</dd></div>
           <div><dt>License</dt><dd>{model.license || model.openness || 'Unknown'}</dd></div>
+          <div><dt>Availability</dt><dd>{model.openness || 'Unknown'}</dd></div>
           <div><dt>Capabilities</dt><dd>{(model.capabilities || []).join(' · ') || 'Unknown'}</dd></div>
         </dl>
       </section>
@@ -128,16 +161,16 @@ function Detail({ model, sources }) {
       <section>
         <h3>Published evidence</h3>
         <dl>
-          <div><dt>Arena</dt><dd>{b.arena ? `${b.arena.rank ? `#${b.arena.rank} · ` : ''}${b.arena.score ?? '—'}${b.arena.votes ? ` · ${fmt(b.arena.votes)} votes` : ''}` : '—'}</dd></div>
-          <div><dt>Artificial Analysis</dt><dd>{b.artificialAnalysis?.intelligence != null ? `${b.artificialAnalysis.intelligence} Intelligence Index${b.artificialAnalysis.rank ? ` · #${b.artificialAnalysis.rank}` : ''}` : '—'}</dd></div>
-          <div><dt>LLM Stats</dt><dd>{b.llmStats?.overall != null ? `${b.llmStats.rank ? `#${b.llmStats.rank} · ` : ''}${b.llmStats.overall} overall` : '—'}</dd></div>
-          <div><dt>Kilo</dt><dd>{b.kilo?.completion != null ? `${b.kilo.completion}% completion${b.kilo.costPerAttempt != null ? ` · ${fmtPrice(b.kilo.costPerAttempt)}/attempt` : ''}` : '—'}</dd></div>
+          <div><dt>Arena</dt><dd>{b.arena?.rank ? `#${b.arena.rank} · ${b.arena.score ?? '—'}${b.arena.votes ? ` · ${fmt(b.arena.votes)} votes` : ''}` : b.arena?.score != null ? `${b.arena.score} · ${b.arena.spread || 'unranked'}` : 'Pending'}</dd></div>
+          <div><dt>Artificial Analysis</dt><dd>{b.artificialAnalysis?.intelligence != null ? `${b.artificialAnalysis.intelligence} Intelligence Index${b.artificialAnalysis.rank ? ` · #${b.artificialAnalysis.rank}` : ''}` : 'Pending'}</dd></div>
+          <div><dt>LLM Stats</dt><dd>{b.llmStats?.overall != null ? `${b.llmStats.rank ? `#${b.llmStats.rank} · ` : ''}${b.llmStats.overall} overall` : 'Pending'}</dd></div>
+          <div><dt>Kilo</dt><dd>{b.kilo?.completion != null ? `${b.kilo.completion}% completion${b.kilo.costPerAttempt != null ? ` · ${fmtPrice(b.kilo.costPerAttempt)}/attempt` : ''}` : 'Pending'}</dd></div>
         </dl>
       </section>
 
       <section>
         <h3>Task measurements</h3>
-        {taskRows.length ? <div className="task-list">{taskRows.map(([label, value]) => <div key={label}><span>{label}</span><b>{value}%</b></div>)}</div> : <p className="muted">No task-level measurements in this snapshot.</p>}
+        {taskRows.length ? <div className="task-list">{taskRows.map(([label, value, provenance], index) => <div key={`${label}-${index}`}><span>{label}<i className={`provenance provenance-${provenance}`}>{provenance}</i></span><b>{value}%</b></div>)}</div> : <p className="muted">Task-level evidence pending.</p>}
       </section>
     </div>
 
@@ -229,7 +262,7 @@ export default function Home() {
       </div>
       <div className="hero-copy">
         <p>A compact ranking surface for text models available through Venice and Morpheus. Compare capability, reasoning, coding, agents, value, price and context without hunting across provider dashboards.</p>
-        <p className="method-note">Index scores normalize heterogeneous benchmark evidence <b>within this provider model set</b>. Published source ranks and scores remain visible separately.</p>
+        <p className="method-note">Index scores normalize heterogeneous benchmark evidence <b>within this provider model set</b>. Incomplete models keep a conservative rank and, where evidence is sufficient, an explicitly labeled estimate band. Published source ranks remain untouched.</p>
       </div>
     </section>
 
@@ -275,11 +308,10 @@ export default function Home() {
           </tr></thead>
           <tbody>
             {models.map(model => {
-              const rank = model.metricRanks?.[metric];
               const isOpen = expanded === model.id;
               return <>
                 <tr key={model.id} className={isOpen ? 'model-row open' : 'model-row'} onClick={() => setExpanded(isOpen ? null : model.id)}>
-                  <td className="rank-cell"><span>{rank ? String(rank).padStart(2, '0') : '—'}</span></td>
+                  <td><RankCell model={model} metric={metric} /></td>
                   <td className="model-cell"><strong>{model.name}</strong><span>{model.organization}</span></td>
                   <td><ScoreCell model={model} metric={metric} /></td>
                   <td><Evidence model={model} sources={data.sources} /></td>
@@ -300,9 +332,9 @@ export default function Home() {
     <section className="method shell" id="method">
       <div className="method-title"><span>METHOD</span><h2>Transparent normalization.</h2></div>
       <div className="method-grid">
-        <article><b>01</b><h3>Normalize</h3><p>Each tracked benchmark is converted to a 0–100 percentile relative to the Venice + Morpheus models that have that measurement. Native values are never displayed as equivalent scales.</p></article>
-        <article><b>02</b><h3>Combine</h3><p>Overall = 45% Arena, 30% Artificial Analysis, 25% LLM Stats. Missing sources receive a neutral 50 prior instead of zero; evidence coverage remains visible.</p></article>
-        <article><b>03</b><h3>Rank</h3><p>Models are ordered by the selected normalized metric. External ranks remain citations and context—not a second ranking system mixed into the index.</p></article>
+        <article><b>01</b><h3>Normalize</h3><p>Each tracked benchmark becomes a 0–100 percentile inside the Venice + Morpheus model set. Native scores and source ranks remain visible on their original scales.</p></article>
+        <article><b>02</b><h3>Conservative rank</h3><p>Missing components receive a neutral 50 prior, never zero. This produces the primary site rank while evidence coverage states exactly how much of the formula is observed.</p></article>
+        <article><b>03</b><h3>Estimate honestly</h3><p>When at least 55% of a metric is observed but evidence remains incomplete, available signals are extrapolated into a labeled estimate band. Missing sources remain pending; the estimate never impersonates a published rank.</p></article>
       </div>
       <div className="method-foot">
         <span>Provider counts: Venice {counts.venice} · Morpheus {counts.morpheus} · both {counts.both}</span>
