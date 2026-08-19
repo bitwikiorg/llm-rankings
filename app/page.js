@@ -26,6 +26,10 @@ function daysOld(date) {
   return Number.isFinite(value) ? Math.max(0, Math.floor(value / 86400000)) : null;
 }
 
+function sourceHref(sources, key) {
+  return sources?.[key]?.url || null;
+}
+
 function ProviderPills({ model }) {
   return <div className="r-providers">
     {model.providers?.venice && <span className="r-provider r-provider-venice">Venice</span>}
@@ -34,21 +38,29 @@ function ProviderPills({ model }) {
 }
 
 function Grade({ model }) {
-  const tier = model.ranking?.tier;
-  if (!tier) return <span className="r-state r-state-pending">Pending</span>;
-  const beta = model.ranking?.tierBasis === 'aggregate';
-  return <span className={`r-grade r-grade-${tier}`} title={beta ? 'Aggregate-derived grade; not an Arena tier.' : 'Arena-rank grade.'}>{beta && <i>β</i>}{tier}</span>;
+  const tier = model.rank ? model.ranking?.tier : null;
+  if (!tier) return <span className="r-no-grade" title="Grades are Arena rank bands only">—</span>;
+  return <span className={`r-grade r-grade-${tier}`} title="Arena Overall rank band">{tier}</span>;
 }
 
 function RankMark({ model }) {
-  if (model.rank) return <div className="r-rank"><strong>#{model.rank}</strong><span>Arena</span></div>;
-  if (model.fallbackRank) return <div className="r-rank r-rank-beta"><strong>β{model.fallbackRank}</strong><span>Aggregate</span></div>;
+  if (model.rank) return <div className="r-rank"><strong>#{model.rank}</strong><span>Arena rank</span></div>;
+  if (model.fallbackRank) return <div className="r-rank r-rank-beta"><strong>β{model.fallbackRank}</strong><span>Fallback rank</span></div>;
   return <div className="r-rank r-rank-pending"><strong>—</strong><span>Pending</span></div>;
 }
 
-function PrimarySignal({ model }) {
-  if (model.rank) return <div className="r-primary"><strong>{model.benchmarks?.arena?.score ?? '—'}</strong><span>Arena score · #{model.rank}</span></div>;
-  if (model.ranking?.aggregate != null) return <div className="r-primary r-primary-beta"><strong>{fmt1(model.ranking.aggregate)}</strong><span>β aggregate · {model.ranking.confidence}</span></div>;
+function EvaluationSignal({ model }) {
+  const arena = model.benchmarks?.arena;
+  if (model.rank) return <div className="r-primary r-primary-arena">
+    <strong>{arena?.score ?? '—'}</strong>
+    <span>Arena score · Elo-like scale</span>
+    <small>{arena?.votes ? `${fmt(arena.votes)} votes` : 'human preference'}</small>
+  </div>;
+  if (model.ranking?.aggregate != null) return <div className="r-primary r-primary-beta">
+    <strong>{fmt1(model.ranking.aggregate)}<i>/100</i></strong>
+    <span>β fallback index · derived</span>
+    <small>{model.ranking.sourceCount}/3 sources · {model.ranking.confidence}</small>
+  </div>;
   return <div className="r-primary r-primary-pending"><strong>Pending</strong><span>No independent overall score</span></div>;
 }
 
@@ -65,9 +77,21 @@ function Freshness({ model }) {
   return <div className="r-fresh" title={`${age} days since release`}><div><i style={{ width: `${width}%` }} /></div><span>{age}d</span></div>;
 }
 
-function Evidence({ model }) {
+function Evidence({ model, sources }) {
   const b = model.benchmarks || {};
-  return <div className="r-evidence"><span className={b.arena?.score != null ? 'on' : ''}>Arena</span><span className={b.artificialAnalysis?.intelligence != null ? 'on' : ''}>AA</span><span className={b.llmStats?.overall != null ? 'on' : ''}>LLM Stats</span><small>{model.ranking?.confidence || 'none'}</small></div>;
+  const rows = [
+    b.arena?.score != null && { key: 'arena', label: 'Arena', value: b.arena.score },
+    b.artificialAnalysis?.intelligence != null && { key: 'artificialAnalysis', label: 'AA', value: `${b.artificialAnalysis.intelligence}/100` },
+    b.llmStats?.overall != null && { key: 'llmStats', label: 'LLM Stats', value: b.llmStats.overall },
+  ].filter(Boolean);
+  return <div className="r-evidence">
+    {rows.map(row => {
+      const href = sourceHref(sources, row.key);
+      const body = <><b>{row.label}</b><span>{row.value}</span></>;
+      return href ? <a href={href} key={row.key} target="_blank" rel="noreferrer">{body}<i>↗</i></a> : <span key={row.key}>{body}</span>;
+    })}
+    <small>{model.ranking?.sourceCount || 0}/3 overall · {model.ranking?.confidence || 'none'}</small>
+  </div>;
 }
 
 function allSources(model, sourceMap) {
@@ -77,21 +101,84 @@ function allSources(model, sourceMap) {
   return [...keyed, ...researched, ...hf].filter((item, index, rows) => rows.findIndex(other => other.url === item.url) === index);
 }
 
+function BenchmarkMetric({ href, label, value, meta }) {
+  return <div className="r-benchmark-metric">
+    {href ? <a href={href} target="_blank" rel="noreferrer">{label} ↗</a> : <span>{label}</span>}
+    <b>{value}</b>
+    <small>{meta}</small>
+  </div>;
+}
+
+const TASK_BENCHMARKS = [
+  ['gpqa', 'GPQA Diamond', '%'],
+  ['terminalBench', 'Terminal-Bench', '%'],
+  ['sweBenchPro', 'SWE-bench Pro', '%'],
+  ['hle', "Humanity's Last Exam", '%'],
+  ['frontierMath', 'FrontierMath', '%'],
+  ['agentsLastExam', "Agents' Last Exam", '%'],
+  ['osWorldVerified', 'OSWorld Verified', '%'],
+  ['mmmuPro', 'MMMU-Pro', '%'],
+  ['automationBench', 'AutomationBench', '%'],
+  ['frontierCode', 'FrontierCode', '%'],
+  ['deepSWE', 'DeepSWE', '%'],
+];
+
+function TaskBenchmarks({ model }) {
+  const vendor = model.benchmarks?.vendor || {};
+  const rows = TASK_BENCHMARKS.map(([key, label, suffix]) => vendor[key] != null ? { key, label, value: `${vendor[key]}${suffix}` } : null).filter(Boolean);
+  if (!rows.length) return <div className="r-task-empty">No checked per-benchmark task measurements in this snapshot.</div>;
+  return <div className="r-task-grid">{rows.map(row => <div key={row.key}><span>{row.label}</span><b>{row.value}</b><small>reported / contextual; not part of Arena rank</small></div>)}</div>;
+}
+
+function AggregateBreakdown({ model, sources }) {
+  const rows = model.ranking?.aggregateComponents || [];
+  if (!rows.length) return null;
+  return <div className="r-aggregate-box">
+    <div className="r-detail-label">β fallback construction · raw scales converted to within-source percentiles before combining</div>
+    <div className="r-aggregate-components">{rows.map(row => {
+      const href = sourceHref(sources, row.key);
+      return <div key={row.key}>
+        <span>{href ? <a href={href} target="_blank" rel="noreferrer">{row.label} ↗</a> : row.label}</span>
+        <b>raw {row.raw} → percentile {fmt1(row.percentile)}</b>
+        <small>{row.effectiveWeight}% effective weight after missing-source renormalization</small>
+      </div>;
+    })}</div>
+  </div>;
+}
+
 function DetailPanel({ model, sources }) {
   const b = model.benchmarks || {};
   const refs = allSources(model, sources);
+  const arenaMeta = b.arena?.rank ? `Rank #${b.arena.rank}${b.arena.votes ? ` · ${fmt(b.arena.votes)} votes` : ''}${b.arena.spread ? ` · spread ${b.arena.spread}` : ''}` : b.arena?.score != null ? `AutoEval / score only${b.arena.spread ? ` · ${b.arena.spread}` : ''}` : 'No Arena observation';
   return <div className="r-detail">
-    <div className="r-detail-head"><div><span>Evaluation state</span><strong>{model.evaluationState || model.ranking?.basis}</strong></div><div><span>Ranking basis</span><strong>{model.ranking?.basis}</strong><small>{model.ranking?.tierBasis === 'aggregate' ? 'β = fallback aggregate; source coverage is explicit.' : model.rank ? 'Grade follows Arena rank band.' : 'No grade until independent evidence exists.'}</small></div></div>
+    <div className="r-detail-head"><div><span>Evaluation state</span><strong>{model.evaluationState || model.ranking?.basis}</strong></div><div><span>Ranking basis</span><strong>{model.ranking?.basis}</strong><small>{model.rank ? 'S/A/B/C/D is derived only from Arena rank.' : model.fallbackRank ? 'β is a separate fallback ranking regime. It is not comparable to an Arena score.' : 'No grade or fallback rank without independent evidence.'}</small></div></div>
     <div className="r-benchmark-grid">
-      <div><span>Arena Overall</span><b>{b.arena?.score != null ? `${b.arena.score}${b.arena.rank ? ` · #${b.arena.rank}` : ''}` : 'Not evaluated'}</b><small>{b.arena?.votes ? `${fmt(b.arena.votes)} votes` : b.arena?.spread || ''}</small></div>
-      <div><span>Artificial Analysis</span><b>{b.artificialAnalysis?.intelligence ?? 'Not evaluated'}</b><small>{b.artificialAnalysis?.variant || 'Intelligence Index'}</small></div>
-      <div><span>LLM Stats</span><b>{b.llmStats?.overall ?? 'Not evaluated'}</b><small>{b.llmStats ? `R ${b.llmStats.reasoning ?? '—'} · C ${b.llmStats.coding ?? '—'} · A ${b.llmStats.agent ?? '—'}` : ''}</small></div>
-      <div><span>Kilo coding</span><b>{b.kilo?.completion != null ? `${b.kilo.completion}%` : 'Not evaluated'}</b><small>{b.kilo?.costPerAttempt != null ? `${fmtPrice(b.kilo.costPerAttempt)} / attempt` : ''}</small></div>
-      <div><span>Fallback aggregate</span><b>{model.ranking?.aggregate != null ? fmt1(model.ranking.aggregate) : 'Insufficient evidence'}</b><small>{model.ranking?.sourceCount || 0}/3 source families · {model.ranking?.confidence}</small></div>
+      <BenchmarkMetric href={sourceHref(sources, 'arena')} label="Arena Overall" value={b.arena?.score != null ? `${b.arena.score} score` : 'Not evaluated'} meta={arenaMeta} />
+      <BenchmarkMetric href={sourceHref(sources, 'artificialAnalysis')} label="Artificial Analysis" value={b.artificialAnalysis?.intelligence != null ? `${b.artificialAnalysis.intelligence}/100` : 'Not evaluated'} meta={b.artificialAnalysis?.variant ? `Intelligence Index · ${b.artificialAnalysis.variant}` : 'Intelligence Index · 0–100'} />
+      <BenchmarkMetric href={sourceHref(sources, 'llmStats')} label="LLM Stats" value={b.llmStats?.overall ?? 'Not evaluated'} meta={b.llmStats ? `Score · reasoning ${b.llmStats.reasoning ?? '—'} · coding ${b.llmStats.coding ?? '—'} · agent ${b.llmStats.agent ?? '—'}` : 'TrueSkill-derived score · own scale'} />
+      <BenchmarkMetric href={sourceHref(sources, 'kilo')} label="Kilo coding" value={b.kilo?.completion != null ? `${b.kilo.completion}%` : 'Not evaluated'} meta={b.kilo?.costPerAttempt != null ? `${fmtPrice(b.kilo.costPerAttempt)} / attempt` : 'coding-specific; excluded from overall fallback'} />
+      <BenchmarkMetric label="β fallback index" value={model.ranking?.aggregate != null ? `${fmt1(model.ranking.aggregate)}/100` : 'Insufficient evidence'} meta={`${model.ranking?.sourceCount || 0}/3 sources · ${model.ranking?.confidence || 'none'} · derived percentile index`} />
     </div>
+    <AggregateBreakdown model={model} sources={sources} />
+    <div className="r-detail-label r-task-label">Task benchmark observations</div>
+    <TaskBenchmarks model={model} />
     <div className="r-spec-grid"><div><span>Context</span><b>{fmtContext(model.context)}</b></div><div><span>Parameters</span><b>{model.paramsTotalB ? `${model.paramsTotalB}B` : 'Unknown'}</b><small>{model.paramsActiveB ? `${model.paramsActiveB}B active` : ''}</small></div><div><span>Precision</span><b>{model.quantization || 'Not published'}</b></div><div><span>License</span><b>{model.license || model.openness || 'Unknown'}</b></div><div><span>Released</span><b>{fmtDate(model.releaseDate)}</b></div><div><span>Capabilities</span><b>{(model.capabilities || []).join(' · ') || 'Unknown'}</b></div></div>
     <div className="r-detail-bottom"><div><span className="r-detail-label">Provider price · input / output · USD / 1M tokens</span><PriceCell model={model} /></div><div><span className="r-detail-label">References</span><div className="r-sources">{refs.map(ref => <a href={ref.url} key={ref.key} target="_blank" rel="noreferrer"><small>{ref.kind || 'source'}</small>{ref.label} ↗</a>)}</div></div></div>
   </div>;
+}
+
+function ScaleGuide({ sources }) {
+  const items = [
+    { key: 'arena', title: 'Arena score', value: '≈ 1000–1500+', body: 'Bradley–Terry human-preference rating displayed on an Elo-like scale. Higher is better. Not a percentage.' },
+    { key: 'artificialAnalysis', title: 'AA Intelligence Index', value: '0–100', body: 'Artificial Analysis composite across current capability evaluations. Higher is better.' },
+    { key: 'llmStats', title: 'LLM Stats Score', value: 'own scale', body: 'TrueSkill-derived conservative rating (μ − 3σ). Do not compare its number directly with Arena or AA.' },
+    { key: null, title: 'β fallback index', value: '0–100', body: 'Our derived percentile aggregate used only when no exact human Arena rank exists. It is not Arena Elo and not an AA score.' },
+    { key: null, title: 'Provider price', value: 'USD / 1M', body: 'Input / output token price from Venice or Morpheus. Lower is cheaper; it is not a quality score.' },
+  ];
+  return <section className="r-shell r-scales"><div className="r-section-head"><div><span className="r-kicker">SCALE GUIDE</span><h2>These numbers are not interchangeable.</h2></div><p>Every source keeps its native scale. The β fallback converts source values to percentiles before aggregation; raw scores are never averaged directly.</p></div><div className="r-scale-grid">{items.map((item, index) => {
+    const href = item.key ? sourceHref(sources, item.key) : null;
+    return <article key={index}><span>{href ? <a href={href} target="_blank" rel="noreferrer">{item.title} ↗</a> : item.title}</span><strong>{item.value}</strong><p>{item.body}</p></article>;
+  })}</div><div className="r-benchmark-note"><b>Benchmark coverage:</b> MMLU, HumanEval, MT-Bench and BBH are not currently in the checked snapshot and are not synthesized from family-level or stale proxy results. Current source suites emphasize newer evaluations such as GPQA, HLE, SWE-bench, Terminal-Bench and SciCode; exact task measurements appear when a model/configuration has sourced evidence.</div></section>;
 }
 
 function ArenaChart({ models }) {
@@ -105,11 +192,11 @@ function ArenaChart({ models }) {
 function AggregateChart({ models }) {
   const rows = models.filter(model => !model.rank && model.ranking?.aggregate != null).slice(0, 10);
   if (!rows.length) return <div className="r-empty">No fallback aggregates.</div>;
-  return <div className="r-bars">{rows.map(model => <div className="r-bar-row" key={model.id}><span>β{model.fallbackRank}</span><b>{model.name}</b><div><i className="r-bar-beta" style={{ width: `${Math.max(4, model.ranking.aggregate)}%` }} /><strong>{fmt1(model.ranking.aggregate)}</strong></div></div>)}</div>;
+  return <div className="r-bars">{rows.map(model => <div className="r-bar-row" key={model.id}><span>β{model.fallbackRank}</span><b>{model.name}</b><div><i className="r-bar-beta" style={{ width: `${Math.max(4, model.ranking.aggregate)}%` }} /><strong>{fmt1(model.ranking.aggregate)}/100</strong></div></div>)}</div>;
 }
 
-function MobileCard({ model, selected, onCompare, onExpand, expanded, sources }) {
-  return <article className="r-mobile-card"><button className="r-mobile-main" onClick={onExpand}><div className="r-mobile-rank"><RankMark model={model} /><Grade model={model} /></div><div className="r-mobile-name"><strong>{model.name}</strong><span>{model.organization}</span><ProviderPills model={model} /></div><PrimarySignal model={model} /></button><div className="r-mobile-meta"><span>{fmtContext(model.context)} ctx</span><span>{fmtDate(model.releaseDate)}</span><button className={selected ? 'r-compare active' : 'r-compare'} onClick={() => onCompare(model.id)}>{selected ? '✓' : '+'}</button></div>{expanded && <DetailPanel model={model} sources={sources} />}</article>;
+function CompareMetric({ label, value, href }) {
+  return <div><dt>{href ? <a href={href} target="_blank" rel="noreferrer">{label} ↗</a> : label}</dt><dd>{value}</dd></div>;
 }
 
 export default function Home() {
@@ -164,20 +251,21 @@ export default function Home() {
 
   return <main className="r-app">
     <header className="r-topbar"><a className="r-brand" href="/"><i />LLM INDEX</a><nav><a href="#rankings">Rankings</a><a href="#analysis">Analysis</a><a href="#compare">Compare</a></nav><a className="r-method" href="/methodology">Methodology ↗</a></header>
-    <section className="r-hero r-shell"><div><span className="r-kicker">TEXT MODELS · VENICE + MORPHEUS</span><h1>Rank the evidence.<br/><em>Show the basis.</em></h1><p>Arena Overall is the default source-native rank. When an exact human Arena rank is unavailable, the model receives a clearly marked β fallback from the independent benchmark families that actually have data. No “U” grade. No invented placement.</p></div><aside><div><span>Provider catalog</span><b>{models.length || '—'} text models</b></div><div><span>Research snapshot</span><b>{data.updated || 'Loading…'}</b></div><div><span>Fallback rule</span><b>Arena → transparent β aggregate</b></div></aside></section>
+    <section className="r-hero r-shell"><div><span className="r-kicker">TEXT MODELS · VENICE + MORPHEUS</span><h1>Rank the evidence.<br/><em>Keep the scales separate.</em></h1><p>Arena Overall leads when an exact human rank exists. Arena score, Artificial Analysis, LLM Stats, β fallback and provider price are different measurements with different scales; the interface now labels each one explicitly and links directly to its source.</p></div><aside><div><span>Provider catalog</span><b>{models.length || '—'} text models</b></div><div><span>Research snapshot</span><b>{data.updated || 'Loading…'}</b></div><div><span>Primary rule</span><b>Arena human rank → β fallback</b></div></aside></section>
 
-    <section className="r-shell r-leaders"><div className="r-section-head"><div><span className="r-kicker">LEADERS</span><h2>Signal first.</h2></div><p>Grades are S/A/B/C/D. Arena grades use source rank bands; β grades are visibly marked as aggregate-derived.</p></div><div className="r-stat-grid"><article className="r-stat r-stat-purple"><span>Arena leader</span><strong>{arenaLeader?.benchmarks?.arena?.score ?? '—'}</strong><h3>{arenaLeader?.name || 'Loading…'}</h3><p>{arenaLeader ? `Arena #${arenaLeader.rank} · ${fmt(arenaLeader.benchmarks?.arena?.votes)} votes` : ''}</p></article><article className="r-stat r-stat-cyan"><span>Fallback leader</span><strong>{fallbackLeader?.ranking?.aggregate != null ? fmt1(fallbackLeader.ranking.aggregate) : '—'}</strong><h3>{fallbackLeader?.name || 'No fallback models'}</h3><p>{fallbackLeader ? `β${fallbackLeader.fallbackRank} · ${fallbackLeader.ranking.confidence} confidence · ${fallbackLeader.ranking.sourceCount}/3 sources` : ''}</p></article><article className="r-stat r-stat-green"><span>Open-weight Arena leader</span><strong>{openLeader ? `#${openLeader.rank}` : '—'}</strong><h3>{openLeader?.name || '—'}</h3><p>{openLeader?.license || openLeader?.openness || ''}</p></article><article className="r-stat"><span>Provider overlap</span><strong>{overlap || '—'}</strong><h3>Venice + Morpheus</h3><p>Explicit shared catalog entries.</p></article></div></section>
+    <ScaleGuide sources={data.sources} />
 
-    <section id="analysis" className="r-shell r-analysis"><div className="r-section-head"><div><span className="r-kicker">VISUAL ANALYSIS</span><h2>Two ranking regimes.</h2></div><p>Source-native Arena ranks are never silently mixed with fallback aggregate ranks.</p></div><div className="r-viz-grid"><article className="r-viz"><header><div><span>ARENA OVERALL</span><h3>Top source-ranked models</h3></div><small>score</small></header><ArenaChart models={arenaModels} /></article><article className="r-viz"><header><div><span>β FALLBACK</span><h3>Models awaiting an exact Arena rank</h3></div><small>normalized aggregate</small></header><AggregateChart models={fallbackModels} /></article></div></section>
+    <section className="r-shell r-leaders"><div className="r-section-head"><div><span className="r-kicker">LEADERS</span><h2>Signal first.</h2></div><p>S/A/B/C/D grades are Arena rank bands only. Fallback models have β ranks but no Arena grade.</p></div><div className="r-stat-grid"><article className="r-stat r-stat-purple"><span>Arena leader · score</span><strong>{arenaLeader?.benchmarks?.arena?.score ?? '—'}</strong><h3>{arenaLeader?.name || 'Loading…'}</h3><p>{arenaLeader ? `Arena #${arenaLeader.rank} · ${fmt(arenaLeader.benchmarks?.arena?.votes)} votes · Elo-like score scale` : ''}</p></article><article className="r-stat r-stat-cyan"><span>Fallback leader · β index</span><strong>{fallbackLeader?.ranking?.aggregate != null ? `${fmt1(fallbackLeader.ranking.aggregate)}/100` : '—'}</strong><h3>{fallbackLeader?.name || 'No fallback models'}</h3><p>{fallbackLeader ? `β${fallbackLeader.fallbackRank} · ${fallbackLeader.ranking.confidence} confidence · ${fallbackLeader.ranking.sourceCount}/3 sources · not Arena score` : ''}</p></article><article className="r-stat r-stat-green"><span>Open-weight Arena leader</span><strong>{openLeader ? `#${openLeader.rank}` : '—'}</strong><h3>{openLeader?.name || '—'}</h3><p>{openLeader?.license || openLeader?.openness || ''}</p></article><article className="r-stat"><span>Provider overlap</span><strong>{overlap || '—'}</strong><h3>Venice + Morpheus</h3><p>Explicit shared catalog entries.</p></article></div></section>
 
-    <section id="rankings" className="r-shell r-rankings"><div className="r-section-head"><div><span className="r-kicker">LEADERBOARD</span><h2>Text model rankings</h2></div><p>{filtered.length} visible · click a row for benchmarks, architecture, pricing and references.</p></div><div className="r-rule"><b>Primary order:</b> Arena Overall when available. Models without a human Arena rank use <b>β aggregate</b> from available Arena AutoEval / Artificial Analysis / LLM Stats evidence, with source count and confidence shown.</div>
-      <div className="r-controls"><label className="r-search"><span>⌕</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search model, lab, provider ID…" /></label><div className="r-provider-filter">{['all','venice','morpheus','both'].map(item => <button key={item} onClick={() => setProvider(item)} className={provider === item ? `active ${item}` : item}>{item === 'all' ? 'All' : item[0].toUpperCase() + item.slice(1)}</button>)}</div><select value={license} onChange={event => setLicense(event.target.value)}><option value="all">All licenses</option><option value="open">Open weights</option><option value="closed">Proprietary</option></select><select value={sort} onChange={event => setSort(event.target.value)}><option value="primary">Primary order</option><option value="aggregate">Aggregate</option><option value="intelligence">AA Intelligence</option><option value="coding">Coding</option><option value="price">Lowest input price</option><option value="newest">Newest</option></select></div>
+    <section id="analysis" className="r-shell r-analysis"><div className="r-section-head"><div><span className="r-kicker">VISUAL ANALYSIS</span><h2>Two ranking regimes.</h2></div><p>Arena score and β fallback index are deliberately charted separately because their numeric scales are incomparable.</p></div><div className="r-viz-grid"><article className="r-viz"><header><div><span>ARENA OVERALL</span><h3>Top human-ranked models</h3></div><small>Bradley–Terry · Elo-like score</small></header><ArenaChart models={arenaModels} /></article><article className="r-viz"><header><div><span>β FALLBACK</span><h3>Models without exact human Arena rank</h3></div><small>derived 0–100 percentile index</small></header><AggregateChart models={fallbackModels} /></article></div></section>
 
-      <div className="r-table-wrap"><table className="r-table"><colgroup><col className="r-col-rank"/><col className="r-col-grade"/><col className="r-col-model"/><col className="r-col-signal"/><col className="r-col-provider"/><col className="r-col-price"/><col className="r-col-release"/><col className="r-col-context"/><col className="r-col-evidence"/><col className="r-col-compare"/></colgroup><thead><tr><th>Rank</th><th>Grade</th><th>Model</th><th>Primary signal</th><th>Providers</th><th>Price <small>$/1M · in/out</small></th><th>Released</th><th>Context</th><th>Evidence</th><th>+</th></tr></thead><tbody>{filtered.map(model => <Fragment key={model.id}><tr className={expanded === model.id ? 'r-model-row open' : 'r-model-row'} onClick={() => setExpanded(expanded === model.id ? null : model.id)}><td><RankMark model={model} /></td><td><Grade model={model} /></td><td><div className="r-model"><strong>{model.name}</strong><span>{model.organization}</span><small>{model.openness || model.license || 'Unknown license'}</small></div></td><td><PrimarySignal model={model} /></td><td><ProviderPills model={model} /></td><td><PriceCell model={model} /></td><td><div className="r-release"><strong>{fmtDate(model.releaseDate)}</strong><Freshness model={model} /></div></td><td><strong className="r-context">{fmtContext(model.context)}</strong></td><td><Evidence model={model} /></td><td><button className={compare.includes(model.id) ? 'r-compare active' : 'r-compare'} onClick={event => { event.stopPropagation(); toggleCompare(model.id); }}>{compare.includes(model.id) ? '✓' : '+'}</button></td></tr>{expanded === model.id && <tr className="r-detail-row"><td colSpan="10"><DetailPanel model={model} sources={data.sources} /></td></tr>}</Fragment>)}</tbody></table></div>
-      <div className="r-mobile-list">{filtered.map(model => <MobileCard key={model.id} model={model} selected={compare.includes(model.id)} onCompare={toggleCompare} onExpand={() => setExpanded(expanded === model.id ? null : model.id)} expanded={expanded === model.id} sources={data.sources} />)}</div>
+    <section id="rankings" className="r-shell r-rankings"><div className="r-section-head"><div><span className="r-kicker">LEADERBOARD</span><h2>Text model rankings</h2></div><p>{filtered.length} visible · click a row for raw metrics, derivation, task benchmarks and source links.</p></div><div className="r-rule"><b>Primary order:</b> exact Arena Overall human rank first. If none exists, a <b>β fallback rank</b> orders only the fallback subset using a derived 0–100 percentile index. <b>β1 is not “overall #1” and 55/100 is not comparable to an Arena score near 1500.</b></div>
+      <div className="r-controls"><label className="r-search"><span>⌕</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search model, lab, provider ID…" /></label><div className="r-provider-filter">{['all','venice','morpheus','both'].map(item => <button key={item} onClick={() => setProvider(item)} className={provider === item ? `active ${item}` : item}>{item === 'all' ? 'All' : item[0].toUpperCase() + item.slice(1)}</button>)}</div><select value={license} onChange={event => setLicense(event.target.value)}><option value="all">All licenses</option><option value="open">Open weights</option><option value="closed">Proprietary</option></select><select value={sort} onChange={event => setSort(event.target.value)}><option value="primary">Primary order</option><option value="aggregate">β fallback index</option><option value="intelligence">AA Intelligence</option><option value="coding">Coding</option><option value="price">Lowest input price</option><option value="newest">Newest</option></select></div>
+
+      <div className="r-table-wrap"><table className="r-table"><colgroup><col className="r-col-rank"/><col className="r-col-grade"/><col className="r-col-model"/><col className="r-col-signal"/><col className="r-col-provider"/><col className="r-col-price"/><col className="r-col-release"/><col className="r-col-context"/><col className="r-col-evidence"/><col className="r-col-compare"/></colgroup><thead><tr><th>Rank</th><th>Arena tier</th><th>Model</th><th>Evaluation <small>native / derived scale</small></th><th>Providers</th><th>Price <small>USD / 1M · in/out</small></th><th>Released</th><th>Context</th><th>Evidence <small>click source</small></th><th>+</th></tr></thead><tbody>{filtered.map(model => <Fragment key={model.id}><tr className={expanded === model.id ? 'r-model-row open' : 'r-model-row'} onClick={() => setExpanded(expanded === model.id ? null : model.id)}><td><RankMark model={model} /></td><td><Grade model={model} /></td><td><div className="r-model"><strong>{model.name}</strong><span>{model.organization}</span><small>{model.openness || model.license || 'Unknown license'}</small></div></td><td><EvaluationSignal model={model} /></td><td><ProviderPills model={model} /></td><td><PriceCell model={model} /></td><td><div className="r-release"><strong>{fmtDate(model.releaseDate)}</strong><Freshness model={model} /></div></td><td><strong className="r-context">{fmtContext(model.context)}</strong></td><td><Evidence model={model} sources={data.sources} /></td><td><button className={compare.includes(model.id) ? 'r-compare active' : 'r-compare'} onClick={event => { event.stopPropagation(); toggleCompare(model.id); }}>{compare.includes(model.id) ? '✓' : '+'}</button></td></tr>{expanded === model.id && <tr className="r-detail-row"><td colSpan="10"><DetailPanel model={model} sources={data.sources} /></td></tr>}</Fragment>)}</tbody></table></div>
     </section>
 
-    <section id="compare" className="r-shell r-compare-section"><div className="r-section-head"><div><span className="r-kicker">COMPARE</span><h2>{compared.length ? `${compared.length} models selected` : 'Select up to four models'}</h2></div><p>Raw benchmark values stay raw. Provider economics stay provider-specific.</p></div>{compared.length ? <div className="r-compare-grid">{compared.map(model => <article key={model.id}><header><RankMark model={model}/><Grade model={model}/></header><h3>{model.name}</h3><ProviderPills model={model}/><dl><div><dt>Primary</dt><dd>{model.rank ? `Arena #${model.rank}` : model.fallbackRank ? `β${model.fallbackRank} aggregate` : 'Pending'}</dd></div><div><dt>Arena</dt><dd>{model.benchmarks?.arena?.score ?? '—'}</dd></div><div><dt>AA Intelligence</dt><dd>{model.benchmarks?.artificialAnalysis?.intelligence ?? '—'}</dd></div><div><dt>LLM Stats</dt><dd>{model.benchmarks?.llmStats?.overall ?? '—'}</dd></div><div><dt>Kilo coding</dt><dd>{model.benchmarks?.kilo?.completion != null ? `${model.benchmarks.kilo.completion}%` : '—'}</dd></div><div><dt>Aggregate</dt><dd>{fmt1(model.ranking?.aggregate)}</dd></div><div><dt>Context</dt><dd>{fmtContext(model.context)}</dd></div><div><dt>Released</dt><dd>{fmtDate(model.releaseDate)}</dd></div></dl><PriceCell model={model}/></article>)}</div> : <div className="r-compare-empty">Use the <b>+</b> control in the leaderboard. Selection never changes ranking.</div>}</section>
+    <section id="compare" className="r-shell r-compare-section"><div className="r-section-head"><div><span className="r-kicker">COMPARE</span><h2>{compared.length ? `${compared.length} models selected` : 'Select up to four models'}</h2></div><p>Every metric keeps its unit and source. No cross-scale arithmetic is implied by proximity in the card.</p></div>{compared.length ? <div className="r-compare-grid">{compared.map(model => <article key={model.id}><header><RankMark model={model}/><Grade model={model}/></header><h3>{model.name}</h3><ProviderPills model={model}/><dl><CompareMetric label="Primary rank" value={model.rank ? `Arena #${model.rank}` : model.fallbackRank ? `β${model.fallbackRank} fallback-only` : 'Pending'} /><CompareMetric label="Arena score" value={model.benchmarks?.arena?.score != null ? `${model.benchmarks.arena.score} · ${fmt(model.benchmarks.arena.votes)} votes` : '—'} href={sourceHref(data.sources, 'arena')} /><CompareMetric label="AA Intelligence" value={model.benchmarks?.artificialAnalysis?.intelligence != null ? `${model.benchmarks.artificialAnalysis.intelligence}/100` : '—'} href={sourceHref(data.sources, 'artificialAnalysis')} /><CompareMetric label="LLM Stats Score" value={model.benchmarks?.llmStats?.overall ?? '—'} href={sourceHref(data.sources, 'llmStats')} /><CompareMetric label="Kilo coding" value={model.benchmarks?.kilo?.completion != null ? `${model.benchmarks.kilo.completion}%` : '—'} href={sourceHref(data.sources, 'kilo')} /><CompareMetric label="β fallback index" value={model.ranking?.aggregate != null ? `${fmt1(model.ranking.aggregate)}/100` : '—'} /><CompareMetric label="Context" value={fmtContext(model.context)} /><CompareMetric label="Released" value={fmtDate(model.releaseDate)} /></dl><PriceCell model={model}/></article>)}</div> : <div className="r-compare-empty">Use the <b>+</b> control in the leaderboard. Selection never changes ranking.</div>}</section>
     <footer className="r-footer r-shell"><div><b>LLM INDEX</b><span>Source-first text-model research across Venice + Morpheus.</span></div><div><a href="/methodology">Methodology</a><a href="https://github.com/bitwikiorg/llm-rankings" target="_blank" rel="noreferrer">GitHub ↗</a></div></footer>
   </main>;
 }
