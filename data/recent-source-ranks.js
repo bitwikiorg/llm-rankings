@@ -1,5 +1,5 @@
-// Recent models can appear on independent leaderboards before Arena has enough human votes
-// for an exact Overall rank. Keep those source-native ranks instead of inventing a site score.
+// Source-native evidence for recent models that may not yet have the same benchmark coverage
+// as older models. These values remain labeled evidence; the site rank is normalized separately.
 export const RECENT_SOURCE_RANKS = {
   'glm-5-3': {
     llmStats: {
@@ -17,7 +17,6 @@ export const RECENT_SOURCE_RANKS = {
     meta: {
       releaseDate: '2026-08-14',
       releaseDateLabel: 'announced / limited launch',
-      evaluationState: 'LLM Stats #6 · Arena human rank pending',
       researchSources: [
         { label: 'LLM Stats — overall leaderboard', kind: 'benchmark', url: 'https://llm-stats.com/leaderboards/llm-leaderboard' },
         { label: 'Arena — Text Overall', kind: 'benchmark', url: 'https://arena.ai/leaderboard/text' },
@@ -46,7 +45,6 @@ export const RECENT_SOURCE_RANKS = {
     },
     meta: {
       releaseDate: '2026-08-13',
-      evaluationState: 'LLM Stats #7 · AA 53 · Arena human rank pending',
       researchSources: [
         { label: 'DeepSeek — Models & Pricing (V4-Pro-0813)', kind: 'official', url: 'https://api-docs.deepseek.com/quick_start/pricing/' },
         { label: 'LLM Stats — overall leaderboard', kind: 'benchmark', url: 'https://llm-stats.com/leaderboards/llm-leaderboard' },
