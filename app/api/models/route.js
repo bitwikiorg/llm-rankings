@@ -9,7 +9,7 @@ export const revalidate = 3600;
 export async function GET() {
   const { models, status } = await getModelCatalog();
   const providerModels = models.filter(model => model.providers?.venice || model.providers?.morpheus);
-  const ranked = enrichRankings(providerModels);
+  const ranked = enrichRankings(providerModels).map(({ evaluationState, ...model }) => model);
 
   return NextResponse.json({
     updated: RESEARCH_UPDATED,
