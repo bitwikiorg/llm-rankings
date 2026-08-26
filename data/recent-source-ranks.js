@@ -1,11 +1,19 @@
 // Evidence for recent models that may not yet have the same benchmark coverage as older models.
 export const RECENT_SOURCE_RANKS = {
   'glm-5-3': {
+    arena: {
+      score: 1487,
+      rank: 13,
+      votes: 3751,
+      spread: '4–30',
+      variant: 'max',
+      snapshotDate: '2026-08-21',
+    },
     artificialAnalysis: {
-      rank: 8,
+      rank: 9,
       intelligence: 60,
       variant: 'max',
-      snapshotDate: '2026-08-19',
+      snapshotDate: '2026-08-26',
     },
     llmStats: {
       rank: 6,
@@ -36,12 +44,12 @@ export const RECENT_SOURCE_RANKS = {
       paramsTotalB: 753,
       openness: 'Weights announced; not yet released',
       license: 'Pending',
-      evidenceUpdated: '2026-08-19',
+      evidenceUpdated: '2026-08-26',
       evidenceState: 'independent-partial',
-      evidenceSummary: 'GLM-5.3 is #8 on Artificial Analysis with an Intelligence Index score of 60 and #6 on LLM Stats. Arena has not published a result yet. MindStudio scored it at 91.25% on KingBench 3; several additional launch benchmarks come from Z.ai and are marked as vendor-reported.',
+      evidenceSummary: 'GLM-5.3 Max is #13 overall on Arena Text at 1487±10 (3,751 votes; Aug. 21 snapshot), #9 on Artificial Analysis with an Intelligence Index score of 60, and #6 on the Aug. 18 LLM Stats snapshot. MindStudio scored it at 91.25% on KingBench 3; several additional launch benchmarks come from Z.ai and are marked as vendor-reported.',
       estimate: {
         label: 'frontier-tier estimate',
-        basis: 'Artificial Analysis and LLM Stats place it near the leading group, with strong KingBench 3 results and additional Z.ai coding and agent benchmarks. Arena is still pending.',
+        basis: 'Arena, Artificial Analysis, and LLM Stats now independently place GLM-5.3 near the leading group, with strong KingBench 3 results and additional Z.ai coding and agent benchmarks.',
       },
       researchSources: [
         { label: 'Z.ai — GLM-5.3 developer documentation', kind: 'official', url: 'https://docs.z.ai/guides/llm/glm-5.3' },
@@ -51,7 +59,8 @@ export const RECENT_SOURCE_RANKS = {
         { label: 'Emergent — GLM-5.3 benchmark audit', kind: 'benchmark audit', url: 'https://emergent.sh/learn/glm-5-3-benchmarks' },
         { label: 'Reuters — Z.ai GLM-5.3 launch metrics', kind: 'reported company results', url: 'https://www.reuters.com/technology/chinas-zai-says-new-model-nears-anthropics-mythos-5-cyber-defence-tests-2026-08-14/' },
         { label: 'Hacker News — GLM-5.3 discussion', kind: 'community', url: 'https://news.ycombinator.com/item?id=49353407' },
-        { label: 'Arena — Text Overall', kind: 'pending benchmark', url: 'https://arena.ai/leaderboard/text' },
+        { label: 'Arena — Text Overall', kind: 'benchmark', url: 'https://arena.ai/leaderboard/text' },
+        { label: 'Kilo — GLM-5.3 model page', kind: 'provider benchmark catalog', url: 'https://kilo.ai/models/z-ai-glm-5-3' },
       ],
     },
   },
