@@ -32,6 +32,14 @@ export const RECENT_SOURCE_RANKS = {
       variant: 'high',
       snapshotDate: '2026-09-02',
     },
+    llmStats: {
+      rank: 2,
+      overall: 55.8,
+      reasoning: 54.7,
+      coding: 41.3,
+      agent: 40.0,
+      snapshotDate: '2026-08-31',
+    },
   },
   'gemini-3-7-flash': {
     arena: {
@@ -51,6 +59,14 @@ export const RECENT_SOURCE_RANKS = {
       spread: '4–23',
       variant: 'max',
       snapshotDate: '2026-09-02',
+    },
+    llmStats: {
+      rank: 5,
+      overall: 54.7,
+      reasoning: 53.6,
+      coding: 45.8,
+      agent: 41.3,
+      snapshotDate: '2026-08-29',
     },
   },
   'gemini-3-1-pro-preview': {
@@ -151,16 +167,26 @@ export const RECENT_SOURCE_RANKS = {
       intelligence: 57,
       snapshotDate: '2026-09-02',
     },
+    llmStats: {
+      rank: 12,
+      overall: 51.1,
+      reasoning: 49.9,
+      coding: 36.0,
+      agent: 37.7,
+      snapshotDate: '2026-08-31',
+    },
     meta: {
+      releaseDate: '2026-08-26',
       paramsTotalB: 320,
       paramsActiveB: 18,
       openness: 'Open weights',
       license: 'MIT',
       evidenceUpdated: '2026-09-02',
       evidenceState: 'independent-partial',
-      evidenceSummary: 'GLM-5.3 Flash is #31 on Arena Text at 1473±9 (4,451 votes; Sep. 2 snapshot) and #4/111 on Artificial Analysis with an Intelligence Index score of 57. Venice lists the model at $0.15/M input and $0.50/M output with approximately 1.05M context.',
+      evidenceSummary: 'GLM-5.3 Flash is #31 on Arena Text at 1473±9 (4,451 votes; Sep. 2 snapshot), #4/111 on Artificial Analysis with an Intelligence Index score of 57, and #12 on a current LLM Stats model comparison snapshot with an LLM Stats Score of 51.1. Venice lists the model at $0.15/M input and $0.50/M output with approximately 1.05M context.',
       researchSources: [
         { label: 'Artificial Analysis — GLM-5.3 Flash', kind: 'independent benchmark', url: 'https://artificialanalysis.ai/models/glm-5-3-flash' },
+        { label: 'LLM Stats — GLM-5.3 Flash research', kind: 'independent model research', url: 'https://llm-stats.com/blog/research/glm-5.3-flash-launch' },
         { label: 'Arena — Text Overall', kind: 'benchmark', url: 'https://arena.ai/leaderboard/text' },
         { label: 'Venice — model pricing', kind: 'provider', url: 'https://docs.venice.ai/overview/pricing' },
         { label: 'Hugging Face — GLM-5.3-Flash model card', kind: 'official model card', url: 'https://huggingface.co/zai-org/GLM-5.3-Flash' },
