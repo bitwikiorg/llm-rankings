@@ -9,28 +9,33 @@ export const revalidate = 3600;
 export async function GET() {
   const { models, status } = await getModelCatalog();
   const providerModels = models.filter(model => model.providers?.venice || model.providers?.morpheus);
-  const ranked = enrichRankings(providerModels).map(({ evaluationState, ...model }) => model);
+  const evaluated = enrichRankings(providerModels).map(({ evaluationState, ...model }) => model);
+  const ranked = evaluated.filter(model => model.scores?.overall != null);
+  const catalogOnly = evaluated
+    .filter(model => model.scores?.overall == null)
+    .map(model => ({ id: model.id, name: model.name, providers: model.providers, providerIds: model.providerIds }));
 
   return NextResponse.json({
-    updated: '2026-09-02',
+    updated: '2026-09-16',
     status,
     models: ranked,
+    catalogOnly,
     sources,
     benchmarkSnapshot: BENCHMARK_SNAPSHOT,
     methodology: {
-      defaultView: 'normalized-overall-index',
-      population: 'Text models available through Venice and/or Morpheus in the current catalog.',
-      normalization: 'Benchmark results are converted to 0-100 percentiles within the models in this index before they are combined.',
-      missingEvidence: 'When a benchmark result is unavailable, that component uses a neutral percentile of 50. Evidence coverage shows how much of the metric is supported by available results.',
-      estimateBands: 'For Overall, Reasoning, Coding, and Agent metrics with at least 55% but less than 100% evidence coverage, available results are also used to calculate an estimated placement. The primary rank remains conservative while the estimate shows the likely range.',
+      defaultView: 'evidence-only-overall-index',
+      population: 'Text models available through Venice and/or Morpheus in the current catalog with at least one usable independent Overall source result.',
+      normalization: 'Published Arena, Artificial Analysis and LLM Stats measurements are converted to 0-100 percentiles within the provider-model population for that same source, then combined with the stated weights.',
+      missingEvidence: 'Missing benchmark measurements are not imputed. The composite is renormalized across measurements that actually exist; evidence coverage shows how much of the intended source weight is present.',
+      catalogOnly: 'Provider models with no usable Arena, Artificial Analysis or LLM Stats Overall result remain in catalogOnly and are not assigned a ranking or rendered as ranked cards.',
       weights: INDEX_WEIGHTS,
-      publishedEvidence: 'Arena, Artificial Analysis, LLM Stats, Kilo and task-benchmark results are shown with direct source links and keep their original published values.',
-      provenance: 'Third-party, developer-reported, estimated and pending results are identified separately so users can judge the strength of the available evidence.',
+      publishedEvidence: 'Native source scores and ranks remain visible with direct source links. Class-scoped ranks are not presented as global ranks.',
+      provenance: 'Third-party, developer-reported and pending results are identified separately so users can judge evidence strength.',
       metrics: {
-        overall: 'Arena + Artificial Analysis + LLM Stats',
-        reasoning: 'LLM Stats reasoning + Artificial Analysis + GPQA',
-        coding: 'Kilo + LLM Stats coding + Terminal-Bench + SWE-bench Pro',
-        agent: "LLM Stats agent + Agents' Last Exam + AutomationBench + OSWorld",
+        overall: 'Arena + Artificial Analysis + LLM Stats; available evidence only',
+        reasoning: 'LLM Stats reasoning + Artificial Analysis + GPQA; available evidence only',
+        coding: 'Kilo + LLM Stats coding + Terminal-Bench + SWE-bench Pro; available evidence only',
+        agent: "LLM Stats agent + Agents' Last Exam + AutomationBench + OSWorld; available evidence only",
         value: '70% overall capability + 30% affordability',
         affordability: 'Blended provider token cost, lower is better',
         context: 'Published context window, larger is better',
