@@ -6,15 +6,20 @@
 /* The old table-slug legend is hidden because slugs now live in the dropdown. */
 .legend-strip > .legend-item:nth-child(5){display:none}
 
+.slug-list{display:flex;flex-wrap:wrap;gap:6px}
 .copyable-slug{
+  appearance:none;
   position:relative;
   min-height:34px;
+  max-width:100%;
   padding:8px 48px 8px 10px;
   border:1px solid #3d4958;
   border-radius:8px;
   background:#0d131c;
   color:#e0e5eb;
   font:10px/1.55 var(--mono);
+  text-align:left;
+  overflow-wrap:anywhere;
   user-select:all;
   cursor:copy;
   transition:border-color .13s,background .13s,color .13s;
@@ -30,7 +35,7 @@
   color:var(--signal);
 }
 .copyable-slug:hover,
-.copyable-slug:focus{
+.copyable-slug:focus-visible{
   outline:0;
   border-color:#637184;
   background:#151e2a;
@@ -56,5 +61,7 @@
 
 @media(max-width:760px){
   .rank-table{min-width:800px}
+  .slug-list{display:grid}
+  .copyable-slug{width:100%}
   .slug-copy-toast{right:11px;bottom:11px;max-width:calc(100vw - 22px)}
 }
