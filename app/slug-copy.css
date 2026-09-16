@@ -1,0 +1,60 @@
+/* Provider API slugs belong in the expanded model details, not the ranking surface. */
+.rank-table thead th:nth-child(5),
+.rank-table .model-row > td:nth-child(5){display:none}
+.rank-table{min-width:960px}
+
+/* The old table-slug legend is hidden because slugs now live in the dropdown. */
+.legend-strip > .legend-item:nth-child(5){display:none}
+
+.copyable-slug{
+  position:relative;
+  min-height:34px;
+  padding:8px 48px 8px 10px;
+  border:1px solid #3d4958;
+  border-radius:8px;
+  background:#0d131c;
+  color:#e0e5eb;
+  font:10px/1.55 var(--mono);
+  user-select:all;
+  cursor:copy;
+  transition:border-color .13s,background .13s,color .13s;
+}
+.copyable-slug:after{
+  content:'COPY';
+  position:absolute;
+  right:9px;
+  top:50%;
+  transform:translateY(-50%);
+  font:8px var(--mono);
+  letter-spacing:.08em;
+  color:var(--signal);
+}
+.copyable-slug:hover,
+.copyable-slug:focus{
+  outline:0;
+  border-color:#637184;
+  background:#151e2a;
+  color:#fff;
+  box-shadow:0 0 0 3px rgba(116,232,255,.05);
+}
+
+.slug-copy-toast{
+  position:fixed;
+  z-index:1000;
+  right:18px;
+  bottom:18px;
+  max-width:min(520px,calc(100vw - 36px));
+  padding:10px 13px;
+  border:1px solid #637184;
+  border-radius:9px;
+  background:#111823;
+  box-shadow:0 14px 38px rgba(0,0,0,.38);
+  color:#c8d0da;
+  font:10px/1.45 var(--mono);
+}
+.slug-copy-toast code{color:var(--signal);font:inherit;overflow-wrap:anywhere}
+
+@media(max-width:760px){
+  .rank-table{min-width:800px}
+  .slug-copy-toast{right:11px;bottom:11px;max-width:calc(100vw - 22px)}
+}
