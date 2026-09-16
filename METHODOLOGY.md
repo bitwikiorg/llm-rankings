@@ -4,7 +4,7 @@ The public product remains a single page. This file records the implementation c
 
 ## Overall index
 
-For each model, supported independent capability measurements are converted into percentile positions among tracked Venice + Morpheus text models on that same source measurement.
+For each model, supported independent capability measurements are converted into percentile positions among evidence-qualified Venice + Morpheus text models on that same source measurement.
 
 Weights:
 
@@ -12,9 +12,11 @@ Weights:
 - Artificial Analysis Intelligence Index: 30%
 - LLM Stats Overall: 25%
 
-The composite uses **only measurements that actually exist** for the exact model/variant represented. When one of the three sources is missing, its weight is not replaced by a guessed or neutral value; the remaining available weights are renormalized. Evidence coverage is displayed separately.
+A model must have usable Overall evidence from **at least two independent sources** among Arena, Artificial Analysis, and LLM Stats to receive a primary INDEX rank. This prevents a single excellent leaderboard result from becoming a synthetic overall #1.
 
-A model with no usable Arena, Artificial Analysis, or LLM Stats Overall result is **catalog-only**. It remains known to the provider catalog but receives no overall score or rank and is not rendered as a ranked card.
+For qualified models, the composite uses **only measurements that actually exist** for the exact model/variant represented. When one of the three sources is missing, its weight is not replaced by a guessed or neutral value; the remaining available weights are renormalized. Evidence coverage is displayed separately.
+
+Models with zero or one usable independent Overall result remain **catalog/provisional** entries. They stay tracked with provider slugs and published evidence, but receive no primary Overall rank and are not rendered as ranked cards.
 
 ## Metric indexes
 
@@ -36,4 +38,4 @@ Missing exact-model evidence remains missing. There are no synthetic midpoint pr
 
 ## Provider catalog
 
-The ranked population is restricted to text models available through Venice, Morpheus, or both. Exact Venice and Morpheus API model slugs are preserved on each model record. Live provider API results, when configured, may add current slugs and availability; curated provider snapshots provide fallback coverage for newly released frontier models.
+The ranked population is restricted to text models available through Venice, Morpheus, or both that satisfy the two-source Overall evidence threshold. Exact Venice and Morpheus API model slugs are preserved on each model record. Live provider API results, when configured, may add current slugs and availability; curated provider snapshots provide fallback coverage for newly released frontier models.
