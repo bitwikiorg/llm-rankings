@@ -1,5 +1,7 @@
 import './globals.css';
 import './explain.css';
+import './slug-copy.css';
+import SlugCopyEnhancer from './slug-copy';
 
 export const metadata = {
   title: 'LLM Index — Venice × Morpheus',
@@ -9,7 +11,10 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        {children}
+        <SlugCopyEnhancer />
+      </body>
     </html>
   );
 }
