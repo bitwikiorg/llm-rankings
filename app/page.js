@@ -4,7 +4,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 const METRICS = [
-  { key: 'overall', label: 'Overall', short: 'INDEX', description: '45% Arena · 30% Artificial Analysis · 25% LLM Stats', help: 'A broad capability ranking that combines Arena, Artificial Analysis and LLM Stats. Each source is weighted as shown below the tabs.' },
+  { key: 'overall', label: 'Overall', short: 'INDEX', description: '45% Arena · 30% Artificial Analysis · 25% LLM Stats', help: 'A broad capability ranking that combines Arena, Artificial Analysis and LLM Stats. Missing source results are not imputed; available weights are renormalized and evidence coverage is shown.' },
   { key: 'reasoning', label: 'Reasoning', short: 'REASON', description: 'LLM Stats reasoning · Artificial Analysis · GPQA', help: 'Compares reasoning performance using reasoning-focused rankings and benchmark results. Models with less available data are shown with lower evidence coverage.' },
   { key: 'coding', label: 'Coding', short: 'CODE', description: 'Kilo · LLM Stats coding · Terminal-Bench · SWE-bench Pro', help: 'Compares programming and software-engineering performance using coding leaderboards and task benchmarks.' },
   { key: 'agent', label: 'Agents', short: 'AGENT', description: 'LLM Stats agent · tool-use and agent benchmarks', help: 'Compares how well models use tools and complete multi-step autonomous tasks. Third-party and developer-reported results are identified separately.' },
@@ -15,7 +15,7 @@ const METRICS = [
 
 const SOURCE_TIPS = {
   arena: 'Arena ranks models from human preference in head-to-head comparisons. The chip shows Arena’s published result.',
-  artificialAnalysis: 'Artificial Analysis combines multiple intelligence benchmarks into its Intelligence Index. The chip shows its published score or rank.',
+  artificialAnalysis: 'Artificial Analysis combines multiple intelligence benchmarks into its Intelligence Index. The chip shows its published Intelligence score; class-scoped ranks are not presented as global ranks.',
   llmStats: 'LLM Stats publishes aggregate rankings and task-specific scores across many models. The chip shows its published result.',
   kilo: 'Kilo evaluates coding models with practical coding tasks. It contributes to the Coding view.',
   veniceModels: 'Venice’s model catalog shows which text models are currently offered through Venice.',
@@ -29,11 +29,6 @@ const fmtScore = value => value == null ? '—' : Number(value).toFixed(1);
 const fmtContext = value => value == null ? '—' : value >= 1_000_000 ? `${(value / 1_000_000).toFixed(value % 1_000_000 ? 1 : 0)}M` : `${Math.round(value / 1000)}K`;
 const fmtPrice = value => value == null ? '—' : Number(value) < 0.1 ? `$${Number(value).toFixed(3)}` : `$${Number(value).toFixed(2)}`;
 const fmtDate = date => date ? new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(`${date}T00:00:00Z`)) : 'Unknown';
-
-function estimateLabel(estimate) {
-  if (!estimate) return null;
-  return estimate.best === estimate.worst ? `est #${estimate.best}` : `est #${estimate.best}–${estimate.worst}`;
-}
 
 function Tooltip({ label, as = 'span', className = '', children, ...props }) {
   const [tip, setTip] = useState(null);
@@ -83,10 +78,17 @@ function SourceLink({ href, children, className = '', tip = '' }) {
   return <a className={className} href={href} target="_blank" rel="noreferrer">{children}<span aria-hidden="true">↗</span></a>;
 }
 
-function ProviderMarks({ model }) {
-  return <div className="provider-marks" aria-label="Provider availability">
-    {model.providers?.venice && <Tooltip className="provider-mark provider-venice" label="Available through Venice.">V</Tooltip>}
-    {model.providers?.morpheus && <Tooltip className="provider-mark provider-morpheus" label="Available through Morpheus.">M</Tooltip>}
+function ProviderSlugs({ model }) {
+  const rows = [
+    { key: 'venice', label: 'V', name: 'Venice', ids: model.providerIds?.venice || [], available: model.providers?.venice },
+    { key: 'morpheus', label: 'M', name: 'Morpheus', ids: model.providerIds?.morpheus || [], available: model.providers?.morpheus },
+  ].filter(row => row.available || row.ids.length);
+
+  if (!rows.length) return <span className="muted">—</span>;
+  return <div className="evidence-stack" aria-label="Provider API model slugs">
+    {rows.map(row => <Tooltip as="div" className="evidence-link" key={row.key} label={`${row.name} API model slug${row.ids.length > 1 ? 's' : ''}.`}>
+      <span>{row.label}</span><b>{row.ids.length ? row.ids.join(', ') : 'available'}</b>
+    </Tooltip>)}
   </div>;
 }
 
@@ -122,10 +124,8 @@ function allReferences(model, sources) {
 
 function RankCell({ model, metric }) {
   const rank = model.metricRanks?.[metric];
-  const estimate = model.rankEstimates?.[metric];
   return <div className="rank-cell">
-    <Tooltip label="Position among models in this index for the selected metric.">{rank ? String(rank).padStart(2, '0') : '—'}</Tooltip>
-    {estimate && <Tooltip as="small" label="Estimated placement from the benchmark results currently available. A wider range means more uncertainty.">{estimateLabel(estimate)}</Tooltip>}
+    <Tooltip label="Position among models in this index for the selected metric, calculated only from measured evidence.">{rank ? String(rank).padStart(2, '0') : '—'}</Tooltip>
   </div>;
 }
 
@@ -134,18 +134,17 @@ function ScoreCell({ model, metric }) {
   const coverage = ['overall', 'reasoning', 'coding', 'agent'].includes(metric) ? model.coverage?.[metric] : null;
   return <div className="score-cell">
     <Tooltip as="strong" label="0–100 comparison score for the selected metric. Scores are relative to the models in this index.">{fmtScore(score)}</Tooltip>
-    {coverage != null && <Tooltip label="How much of this metric is supported by available benchmark results. Higher coverage means less missing data.">{coverage}% evidence</Tooltip>}
+    {coverage != null && <Tooltip label="Share of the intended metric weight backed by measured benchmark results. Missing results are not imputed.">{coverage}% evidence</Tooltip>}
   </div>;
 }
 
 function MetricMini({ model, metric }) {
   const spec = METRICS.find(item => item.key === metric);
   const rank = model.metricRanks?.[metric];
-  const estimate = model.rankEstimates?.[metric];
   return <Tooltip as="div" className="metric-mini" label={spec?.help || 'Ranking metric.'}>
     <span>{spec?.short}</span>
     <strong>{rank ? `#${rank}` : '—'}</strong>
-    <small>{estimate ? estimateLabel(estimate) : fmtScore(model.scores?.[metric])}</small>
+    <small>{fmtScore(model.scores?.[metric])}</small>
   </Tooltip>;
 }
 
@@ -186,10 +185,9 @@ function Detail({ model, sources }) {
       {['overall', 'reasoning', 'coding', 'agent', 'value'].map(metric => <MetricMini key={metric} model={model} metric={metric} />)}
     </div>
 
-    {(model.evidenceSummary || model.estimate) && <div className="model-brief">
-      <div><span>{model.evidenceState === 'independent-partial' ? 'PARTIAL COVERAGE' : 'DATA NOTE'}</span>{model.estimate?.label && <b>{model.estimate.label}</b>}</div>
-      {model.evidenceSummary && <p>{model.evidenceSummary}</p>}
-      {model.estimate?.basis && <small>Why this estimate: {model.estimate.basis}</small>}
+    {model.evidenceSummary && <div className="model-brief">
+      <div><span>DATA NOTE</span></div>
+      <p>{model.evidenceSummary}</p>
     </div>}
 
     <div className="detail-grid">
@@ -202,6 +200,8 @@ function Detail({ model, sources }) {
           <div><dt>Precision</dt><dd>{model.quantization || 'Not published'}</dd></div>
           <div><dt>License</dt><dd>{model.license || model.openness || 'Unknown'}</dd></div>
           <div><dt>Availability</dt><dd>{model.openness || 'Unknown'}</dd></div>
+          <div><dt>Venice slug</dt><dd>{model.providerIds?.venice?.join(', ') || '—'}</dd></div>
+          <div><dt>Morpheus slug</dt><dd>{model.providerIds?.morpheus?.join(', ') || '—'}</dd></div>
           <div><dt>Capabilities</dt><dd>{(model.capabilities || []).join(' · ') || 'Unknown'}</dd></div>
         </dl>
       </section>
@@ -210,7 +210,7 @@ function Detail({ model, sources }) {
         <h3>External rankings</h3>
         <dl>
           <div><dt>Arena</dt><dd>{b.arena?.rank ? `#${b.arena.rank} · ${b.arena.score ?? '—'}${b.arena.votes ? ` · ${fmt(b.arena.votes)} votes` : ''}` : b.arena?.score != null ? `${b.arena.score} · ${b.arena.spread || 'unranked'}` : 'Pending'}</dd></div>
-          <div><dt>Artificial Analysis</dt><dd>{b.artificialAnalysis?.intelligence != null ? `${b.artificialAnalysis.intelligence} Intelligence Index${b.artificialAnalysis.rank ? ` · #${b.artificialAnalysis.rank}` : ''}` : 'Pending'}</dd></div>
+          <div><dt>Artificial Analysis</dt><dd>{b.artificialAnalysis?.intelligence != null ? `${b.artificialAnalysis.intelligence} Intelligence Index${b.artificialAnalysis.rankScope === 'global' && b.artificialAnalysis.rank ? ` · #${b.artificialAnalysis.rank}` : ''}` : 'Pending'}</dd></div>
           <div><dt>LLM Stats</dt><dd>{b.llmStats?.overall != null ? `${b.llmStats.rank ? `#${b.llmStats.rank} · ` : ''}${b.llmStats.overall} overall` : 'Pending'}</dd></div>
           <div><dt>Kilo</dt><dd>{b.kilo?.completion != null ? `${b.kilo.completion}% completion${b.kilo.costPerAttempt != null ? ` · ${fmtPrice(b.kilo.costPerAttempt)}/attempt` : ''}` : 'Pending'}</dd></div>
         </dl>
@@ -262,7 +262,8 @@ export default function Home() {
         if (provider === 'venice' && !model.providers?.venice) return false;
         if (provider === 'morpheus' && !model.providers?.morpheus) return false;
         if (provider === 'both' && !(model.providers?.venice && model.providers?.morpheus)) return false;
-        if (term && !`${model.name} ${model.organization} ${model.id}`.toLowerCase().includes(term)) return false;
+        const slugs = [...(model.providerIds?.venice || []), ...(model.providerIds?.morpheus || [])].join(' ');
+        if (term && !`${model.name} ${model.organization} ${model.id} ${slugs}`.toLowerCase().includes(term)) return false;
         return true;
       })
       .sort((a, b) => {
@@ -298,7 +299,7 @@ export default function Home() {
         <div><strong>LLM INDEX</strong><span>VENICE × MORPHEUS</span></div>
       </div>
       <div className="header-meta">
-        <span>{counts.total} text models</span>
+        <span>{counts.total} ranked text models</span>
         <Tooltip label="Date when the rankings and model information on this page were last refreshed.">Updated {data.updated || '—'}</Tooltip>
       </div>
     </header>
@@ -310,7 +311,7 @@ export default function Home() {
       </div>
       <div className="hero-copy">
         <p>A compact ranking surface for text models available through Venice and Morpheus. Compare capability, reasoning, coding, agents, value, price and context without hunting across provider dashboards.</p>
-        <p className="method-note">Scores combine several public benchmarks into a 0–100 comparison for the models in this index. When benchmark data is missing, the score stays conservative; when enough data is available, an estimate range shows where the model may place.</p>
+        <p className="method-note">Scores combine measured public benchmark evidence into a 0–100 comparison for the models in this index. Missing benchmark results are not guessed or assigned a neutral score; available weights are renormalized and evidence coverage shows what is actually measured.</p>
       </div>
     </section>
 
@@ -334,14 +335,14 @@ export default function Home() {
       <div className="legend-strip" aria-label="How to read the index">
         <Tooltip className="legend-item" label="Green numbers are the position in this index for the selected metric."><i className="legend-swatch rank" />Rank</Tooltip>
         <Tooltip className="legend-item" label="Cyan numbers are the 0–100 comparison score used for the selected metric."><i className="legend-swatch score" />Score</Tooltip>
-        <Tooltip className="legend-item" label="Amber text shows an estimated placement when some benchmark results are still unavailable."><i className="legend-swatch estimate" />Estimate</Tooltip>
+        <Tooltip className="legend-item" label="Evidence coverage shows how much of the intended benchmark weight is actually measured. Missing results are not imputed."><i className="legend-swatch estimate" />Coverage</Tooltip>
         <Tooltip className="legend-item" label="These chips show results published by Arena, Artificial Analysis, LLM Stats or other benchmark sources."><i className="legend-swatch evidence" />External results</Tooltip>
-        <Tooltip className="legend-item" label="V means the model is on Venice; M means it is on Morpheus."><i className="legend-swatch access" />V / M access</Tooltip>
+        <Tooltip className="legend-item" label="V and M rows show the exact Venice and Morpheus API model slugs."><i className="legend-swatch access" />Provider slugs</Tooltip>
         <span className="legend-hint">Hover or focus <b>?</b> for definitions</span>
       </div>
 
       <div className="toolbar">
-        <label className="search-box"><span>⌕</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search model or lab" /></label>
+        <label className="search-box"><span>⌕</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search model, lab or API slug" /></label>
         <div className="provider-filter" role="group" aria-label="Provider filter">
           {[['all', 'All'], ['venice', 'Venice'], ['morpheus', 'Morpheus'], ['both', 'Both']].map(([key, label]) => <button key={key} type="button" onClick={() => setProvider(key)} className={provider === key ? 'active' : ''}>{label}</button>)}
         </div>
@@ -358,7 +359,7 @@ export default function Home() {
             <th><Tooltip label="Model name and developer. Select a row to see more details and sources.">Model <i className="help-dot">?</i></Tooltip></th>
             <th className="col-score"><Tooltip label="0–100 comparison score for the selected metric.">{activeMetric.label} <i className="help-dot">?</i></Tooltip></th>
             <th><Tooltip label="Results published by external benchmark and leaderboard sources.">External results <i className="help-dot">?</i></Tooltip></th>
-            <th className="col-access"><Tooltip label="Where the model is available: V = Venice, M = Morpheus.">Access <i className="help-dot">?</i></Tooltip></th>
+            <th className="col-access"><Tooltip label="Exact model identifiers used by Venice (V) and Morpheus (M) APIs.">Provider slugs <i className="help-dot">?</i></Tooltip></th>
             <th className="col-price"><Tooltip label="USD per 1M tokens. Input price appears before the slash; output price after it.">Price <small>in / out</small> <i className="help-dot">?</i></Tooltip></th>
             <th className="col-context"><Tooltip label="Maximum published context-window size. K = thousand tokens; M = million tokens.">Context <i className="help-dot">?</i></Tooltip></th>
             <th className="col-open" aria-label="Details" />
@@ -372,7 +373,7 @@ export default function Home() {
                   <td className="model-cell"><strong>{model.name}</strong><span>{model.organization}</span></td>
                   <td><ScoreCell model={model} metric={metric} /></td>
                   <td><Evidence model={model} sources={data.sources} /></td>
-                  <td><ProviderMarks model={model} /></td>
+                  <td><ProviderSlugs model={model} /></td>
                   <td><Price model={model} /></td>
                   <td className="context-cell"><Tooltip as="b" label="Maximum published context-window size for this model.">{fmtContext(model.context)}</Tooltip></td>
                   <td className="open-cell"><button type="button" aria-label={`${isOpen ? 'Close' : 'Open'} ${model.name} details`} onClick={event => { event.stopPropagation(); setExpanded(isOpen ? null : model.id); }}>{isOpen ? '−' : '+'}</button></td>
@@ -389,12 +390,12 @@ export default function Home() {
     <section className="method shell" id="method">
       <div className="method-title"><span>HOW IT WORKS</span><h2>One scale, several benchmarks.</h2></div>
       <div className="method-grid">
-        <article><b>01</b><h3>Combine benchmarks</h3><p>Each benchmark is converted to a percentile among the models in this index. That lets different score scales contribute to one comparison without treating unlike raw scores as equivalent.</p></article>
-        <article><b>02</b><h3>Handle missing data</h3><p>If a benchmark result is missing, it contributes a neutral midpoint rather than a failing score. Evidence coverage shows how much of the selected metric is backed by available results.</p></article>
-        <article><b>03</b><h3>Show uncertainty</h3><p>When at least 55% of the data for a metric is available, an estimated rank range is also shown. A wider range means more uncertainty while additional benchmark results are pending.</p></article>
+        <article><b>01</b><h3>Normalize measured results</h3><p>Each available benchmark is converted to a percentile among the provider models measured by that same source. Unlike raw scores are never treated as directly equivalent.</p></article>
+        <article><b>02</b><h3>Never invent missing data</h3><p>If a benchmark result is missing, it contributes nothing. The remaining source weights are renormalized, and evidence coverage shows how much of the intended metric is actually measured.</p></article>
+        <article><b>03</b><h3>Keep catalog separate</h3><p>Provider models with no usable Overall benchmark evidence stay in the catalog but are not assigned a synthetic rank or rendered as ranked cards.</p></article>
       </div>
       <div className="method-foot">
-        <span>Venice {counts.venice} models · Morpheus {counts.morpheus} models · {counts.both} available on both</span>
+        <span>Venice {counts.venice} ranked models · Morpheus {counts.morpheus} ranked models · {counts.both} available on both</span>
         <span>Rankings update as new model and benchmark results become available.</span>
       </div>
     </section>
