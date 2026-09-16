@@ -1,0 +1,101 @@
+/* Readability pass: prefer text slightly too large over too small. */
+body{font-size:16px;line-height:1.58}
+
+/* Primary display text */
+.hero h1{font-size:clamp(53px,6.25vw,86px)}
+.hero-copy p{font-size:18px}
+.metric-context>div strong{font-size:24px}
+.method-title h2{font-size:clamp(32px,4.2vw,57px)}
+.method-grid h3{font-size:18px}
+
+/* Small UI text: raise the floor from 8–10px to 10–12px. */
+.brand-lockup strong{font-size:15px}
+.brand-lockup span,
+.header-meta,
+.eyebrow,
+.source-rail>span,
+.source-rail a,
+.source-rail>div>span,
+.metric-rail button span,
+.metric-context>div span,
+.metric-context p,
+.provider-filter button,
+.result-count,
+.rank-table th,
+.evidence-link,
+.price-row,
+.metric-mini span,
+.metric-mini small,
+.detail-panel h3,
+dt,
+.task-list span,
+.task-list b,
+.reference-link small,
+.footer,
+.method-title>span,
+.method-grid article>b,
+.method-foot,
+.provenance,
+.legend-item,
+.legend-hint,
+.footer-brand strong,
+.footer-brand span,
+.footer-links a,
+.tip-popover,
+.copyable-slug,
+.slug-copy-toast{font-size:11px}
+
+.rank-table th small,
+.rank-cell small,
+.score-cell span,
+.model-cell span,
+.help-dot{font-size:10px}
+
+.metric-rail button b{font-size:14px}
+.search-box input{font-size:14px}
+.model-cell strong{font-size:16px}
+.score-cell strong{font-size:22px}
+.context-cell b{font-size:13px}
+.muted{font-size:12px}
+.metric-mini strong{font-size:18px}
+.model-brief p{font-size:13px}
+.model-brief span{font-size:11px}
+.model-brief b{font-size:14px}
+.model-brief small{font-size:11px}
+dd{font-size:12px}
+.reference-link b{font-size:12px}
+.method-grid p{font-size:13px}
+.hero-copy .method-note{font-size:12px}
+
+/* Keep controls comfortable when labels grow. */
+.rank-table th{height:50px}
+.rank-table td{padding-top:17px;padding-bottom:17px}
+.evidence-link{min-height:31px;padding:6px 9px}
+.provider-filter button{min-height:45px}
+.metric-rail button{padding-top:17px;padding-bottom:16px}
+
+@media(max-width:760px){
+  body{font-size:16px}
+  .hero h1{font-size:clamp(49px,15vw,72px)}
+  .hero-copy p{font-size:16px}
+  .hero-copy .method-note{font-size:11px}
+  .brand-lockup strong{font-size:14px}
+  .header-meta{font-size:10px}
+  .metric-rail button span{font-size:10px}
+  .metric-context>div strong{font-size:21px}
+  .legend-item{font-size:10px}
+  .rank-table th{font-size:11px}
+  .rank-cell span{font-size:23px}
+  .rank-cell small{font-size:9px}
+  .score-cell strong{font-size:19px}
+  .model-cell strong{font-size:15px}
+  .model-cell span{font-size:10px}
+  .price-row{font-size:10px}
+  .table-wrap:before{font-size:9px}
+  .footer-links a{font-size:10px}
+}
+
+@media(max-width:420px){
+  .hero h1{font-size:clamp(46px,14.5vw,62px)}
+  .legend-item{font-size:10px}
+}
