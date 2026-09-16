@@ -1,6 +1,7 @@
 import './globals.css';
 import './explain.css';
 import './slug-copy.css';
+import './typography.css';
 import SlugCopyEnhancer from './slug-copy';
 
 export const metadata = {
